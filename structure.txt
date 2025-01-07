@@ -1,0 +1,79 @@
+📁 ai-email-client/
+├── 📁 app/
+│   ├── 📁 (auth)/
+│   │   ├── login/
+│   │   │   └── page.tsx
+│   │   └── signup/
+│   │       └── page.tsx
+│   ├── 📁 (dashboard)/
+│   │   ├── inbox/
+│   │   │   └── page.tsx
+│   │   ├── sent/
+│   │   │   └── page.tsx
+│   │   └── layout.tsx
+│   ├── 📁 api/
+│   │   ├── auth/
+│   │   │   └── [...nextauth].ts
+│   │   └── email/
+│   │       ├── send.ts
+│   │       └── generate-response.ts
+│   ├── layout.tsx
+│   └── page.tsx
+├── 📁 components/
+│   ├── ui/
+│   │   ├── button.tsx
+│   │   ├── input.tsx
+│   │   └── loading.tsx
+│   └── email/
+│       ├── sidebar.tsx
+│       ├── email-list.tsx
+│       └── email-view.tsx
+├── 📁 lib/
+│   ├── auth.ts
+│   ├── db.ts
+│   └── gmail.ts
+├── 📁 types/
+│   └── index.ts
+└── 📁 config/
+    └── site.ts
+
+Tech Stack:
+- Frontend: Next.js 14 with App Router
+- Authentication: NextAuth.js with Google OAuth
+- Database: Supabase (PostgreSQL)
+- Email Integration: Gmail API
+- AI Integration: Gemini Pro API
+- Styling: Tailwind CSS
+- Deployment: Vercel
+
+Key Features:
+1. Google OAuth Authentication
+2. Real-time email sync with Gmail
+3. AI-powered email response generation
+4. Email composition and sending
+5. Email organization (folders, labels)
+6. Search functionality
+7. Security measures (encryption, rate limiting)
+
+Database Schema (Supabase):
+- users
+  - id (uuid)
+  - email (string)
+  - name (string)
+  - avatar_url (string)
+  - created_at (timestamp)
+  - updated_at (timestamp)
+
+- email_settings
+  - user_id (uuid)
+  - ai_suggestions_enabled (boolean)
+  - signature (text)
+  - theme (string)
+
+Security Measures:
+1. JWT token-based authentication
+2. Email content encryption
+3. Rate limiting for AI generations
+4. Secure storage of OAuth tokens
+5. XSS protection
+6. CSRF protection

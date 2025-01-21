@@ -2,13 +2,25 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/email/sidebar";
 import { EmailList } from "@/components/email/email-list";
 import { EmailView } from "@/components/email/email-view";
 
+// Define the Email interface
+interface Email {
+  id: string;
+  subject: string;
+  sender: string;
+  body: string;
+  date: string;
+  importance?: 'high' | 'medium' | 'low';
+  aiSuggestedResponse?: string;
+}
+
 export default function InboxPage() {
   const { data: session, status } = useSession();
-  const [selectedEmail, setSelectedEmail] = useState(null);
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
 
   if (status === "loading") {
     return <div>Loading...</div>;
@@ -16,6 +28,11 @@ export default function InboxPage() {
 
   if (status === "unauthenticated") {
     redirect("/login");
+  }
+
+  // Ensure we have the session token before rendering the main content
+  if (!session?.user?.email) {
+    return <div>Please sign in to access your inbox</div>;
   }
 
   return (
@@ -27,7 +44,7 @@ export default function InboxPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Email List */}
         <div className={`${selectedEmail ? 'w-2/5' : 'w-full'} border-r border-gray-200 bg-white`}>
-          <EmailList onEmailSelect={setSelectedEmail} />
+          <EmailList onEmailSelect={(email: Email | null) => setSelectedEmail(email)} />
         </div>
 
         {/* Email View */}

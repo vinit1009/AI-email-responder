@@ -2,18 +2,21 @@ import NextAuth from "next-auth";
 
 declare module "next-auth" {
   interface Session {
-    accessToken?: string;
     user: {
       id: string;
-      name?: string | null;
-      email?: string | null;
-      image?: string | null;
+      email: string;
+      name: string;
+      image?: string;
     };
+    accessToken?: string;
   }
-  
+}
+
+declare module "next-auth/jwt" {
   interface JWT {
     accessToken?: string;
     refreshToken?: string;
-    provider?: string;
+    accessTokenExpires?: number;
+    user?: any;
   }
 }

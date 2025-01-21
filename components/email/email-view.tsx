@@ -1,154 +1,300 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { format } from "date-fns";
+import DOMPurify from "dompurify";
+import { decode } from "html-entities"; // For decoding special HTML characters
 
-interface EmailProps {
+interface EmailDetails {
+  id: string;
+  subject: string;
+  from: string;
+  to: string;
+  date: string;
+  body: string;
+  snippet: string;
+  labelIds: string[];
+}
+
+interface EmailViewProps {
   email: {
     id: string;
     subject: string;
-    sender: {
-      name: string;
-      email: string;
-    };
-    content: string;
+    sender: string;
     date: string;
+    threadId: string;
   };
 }
 
-export function EmailView({ email }: EmailProps) {
-  const [isGeneratingResponse, setIsGeneratingResponse] = useState(false);
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
+export function EmailView({ email }: EmailViewProps) {
+  const { data: session } = useSession();
+  const [threadEmails, setThreadEmails] = useState<EmailDetails[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const generateAIResponse = async () => {
-    setIsGeneratingResponse(true);
+  useEffect(() => {
+    async function fetchThreadEmails() {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/emails/thread/${email.threadId}`, {
+          headers: {
+            Authorization: `Bearer ${session?.user?.email}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch email thread");
+        }
+
+        const data = await response.json();
+        const processedEmails = data.messages.map((message: any) => ({
+          ...message,
+          body: message.payload ? processEmailBody(message.payload) : message.snippet
+        }));
+
+        setThreadEmails(processedEmails);
+      } catch (err) {
+        console.error("Error fetching email thread:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to fetch email thread"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    if (email?.threadId && session?.user?.email) {
+      fetchThreadEmails();
+    }
+  }, [email.threadId, session?.user?.email]);
+
+  const processEmailBody = (payload: any) => {
+    if (!payload.parts && payload.body) {
+      return decodeEmailBody(payload.body.data, payload.mimeType);
+    }
+
+    if (payload.parts) {
+      const htmlPart = payload.parts.find(
+        (part: any) => part.mimeType === "text/html"
+      );
+
+      if (htmlPart?.body?.data) {
+        return decodeEmailBody(htmlPart.body.data, "text/html");
+      }
+
+      const textPart = payload.parts.find(
+        (part: any) => part.mimeType === "text/plain"
+      );
+
+      if (textPart?.body?.data) {
+        return decodeEmailBody(textPart.body.data, "text/plain");
+      }
+    }
+
+    return "Content not available";
+  };
+
+  const decodeEmailBody = (data: string, mimeType: string) => {
     try {
-      // This will be replaced with actual Gemini API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setAiResponse("This is a sample AI-generated response...");
+      const raw = atob(data.replace(/-/g, "+").replace(/_/g, "/"));
+      const decodedContent = decode(raw); // Decode HTML entities first
+
+      if (mimeType === "text/html") {
+        return formatEmailContent(decodedContent);
+      }
+
+      // For plain text, improve formatting by:
+      // 1. Decode HTML entities
+      // 2. Split by newlines
+      // 3. Remove empty lines
+      // 4. Wrap each line in paragraph tags
+      return decodedContent
+        .split(/\r?\n/) // Split on both \r\n and \n
+        .map(line => line.trim())
+        .filter(line => line.length > 0) // Remove empty lines
+        .map(line => `<p>${line}</p>`)
+        .join('\n');
     } catch (error) {
-      console.error("Error generating response:", error);
-    } finally {
-      setIsGeneratingResponse(false);
+      console.error("Error decoding email body:", error);
+      return "Failed to decode email content.";
     }
   };
 
+  const formatEmailContent = (content: string) => {
+    // First decode any HTML entities in the content
+    const decodedContent = decode(content);
+    
+    // Clean up common email formatting issues
+    const cleanedContent = decodedContent
+      .replace(/\r?\n\s*\r?\n/g, '</p><p>') // Convert multiple newlines to paragraphs
+      .replace(/\r?\n/g, '<br />'); // Convert single newlines to line breaks
+
+    // Sanitize and allow safe HTML rendering
+    return DOMPurify.sanitize(cleanedContent, {
+      ALLOWED_TAGS: [
+        "p",
+        "br",
+        "strong",
+        "em",
+        "u",
+        "ol",
+        "ul",
+        "li",
+        "a",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "blockquote",
+        "img",
+        "div",
+        "span",
+        "table",
+        "tr",
+        "td",
+        "th",
+        "tbody",
+        "thead",
+        "style",
+        "header",
+        "footer",
+        "nav",
+        "section",
+        "article",
+        "center",
+        "font",
+        "b",
+        "i",
+        "strike",
+        "hr",
+        "figure",
+        "figcaption",
+      ],
+      ALLOWED_ATTR: [
+        "href",
+        "src",
+        "alt",
+        "style",
+        "class",
+        "id",
+        "width",
+        "height",
+        "align",
+        "valign",
+        "target",
+        "bgcolor",
+        "color",
+        "border",
+        "cellpadding",
+        "cellspacing",
+        "data-*",
+        "title",
+        "role",
+        "aria-*",
+        "name",
+        "type",
+      ],
+      ADD_TAGS: ["style"],
+      ADD_ATTR: ["target"],
+      WHOLE_DOCUMENT: true,
+      RETURN_DOM_FRAGMENT: false,
+      RETURN_DOM: false,
+    });
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return format(date, "MMM d, yyyy h:mm a");
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  const copyToClipboard = (content: string) => {
+    navigator.clipboard.writeText(content).then(
+      () => alert("Email content copied to clipboard!"),
+      (err) => console.error("Failed to copy email content:", err)
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="p-4 text-red-600">Error: {error}</div>;
+  }
+
+  if (!threadEmails.length) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Email Header */}
+    <div className="h-full flex flex-col bg-white">
       <div className="p-6 border-b border-gray-200">
-        <h1 className="text-2xl font-semibold mb-4">{email.subject}</h1>
-        <div className="flex items-center space-x-4">
-          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-            {email.sender.name.charAt(0)}
+        <h1 className="text-2xl font-semibold text-gray-900 mb-4">
+          {email.subject}
+        </h1>
+        {threadEmails.length > 1 && (
+          <div className="text-sm text-gray-500 mb-4">
+            {threadEmails.length} messages
           </div>
-          <div>
-            <div className="font-medium">{email.sender.name}</div>
-            <div className="text-sm text-gray-600">{email.sender.email}</div>
+        )}
+        <div className="space-y-2">
+          <div className="flex items-start">
+            <span className="text-gray-500 w-16">From:</span>
+            <span className="text-gray-900 flex-1">{threadEmails[0].from}</span>
           </div>
+          <div className="flex items-start">
+            <span className="text-gray-500 w-16">To:</span>
+            <span className="text-gray-900 flex-1">{threadEmails[0].to}</span>
+          </div>
+          <div className="flex items-start">
+            <span className="text-gray-500 w-16">Date:</span>
+            <span className="text-gray-900">{formatDate(threadEmails[0].date)}</span>
+          </div>
+          <button
+            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
+            onClick={() => copyToClipboard(threadEmails[0].body || "")}
+          >
+            Copy Email Content
+          </button>
         </div>
       </div>
-
-      {/* Email Content */}
       <div className="flex-1 p-6 overflow-auto">
-        <div className="prose max-w-none">
-          {email.content}
-        </div>
-      </div>
-
-      {/* Reply Section */}
-      <div className="p-6 border-t border-gray-200">
-        <div className="bg-gray-50 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={generateAIResponse}
-              disabled={isGeneratingResponse}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {isGeneratingResponse ? (
-                <>
-                  <LoadingSpinner className="w-4 h-4 mr-2" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <SparklesIcon className="w-4 h-4 mr-2" />
-                  Generate AI Response
-                </>
-              )}
-            </button>
-          </div>
-
-          {aiResponse && (
-            <div className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
-              <div className="text-sm text-gray-600 mb-2">AI-Generated Response:</div>
-              <div className="text-gray-800">{aiResponse}</div>
-              <button
-                onClick={() => setAiResponse(null)}
-                className="mt-2 text-sm text-gray-500 hover:text-gray-700"
-              >
-                Discard
-              </button>
+        {threadEmails.map((threadEmail, index) => (
+          <div 
+            key={threadEmail.id}
+            className={`mb-8 ${index !== threadEmails.length - 1 ? 'border-b border-gray-200 pb-8' : ''}`}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="font-medium">{threadEmail.from}</div>
+                <div className="text-sm text-gray-500">
+                  To: {threadEmail.to}
+                </div>
+              </div>
+              <div className="text-sm text-gray-500">
+                {formatDate(threadEmail.date)}
+              </div>
             </div>
-          )}
-
-          <textarea
-            className="w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            rows={4}
-            placeholder="Write your reply..."
-          />
-
-          <div className="flex justify-end mt-4">
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-              Send
-            </button>
+            <div
+              className="prose max-w-none dark:prose-invert"
+              dangerouslySetInnerHTML={{
+                __html: threadEmail.body,
+              }}
+            />
           </div>
-        </div>
+        ))}
       </div>
     </div>
-  );
-}
-
-function LoadingSpinner(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      className={`animate-spin ${props.className || ""}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      ></circle>
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      ></path>
-    </svg>
-  );
-}
-
-function SparklesIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-      />
-    </svg>
   );
 }

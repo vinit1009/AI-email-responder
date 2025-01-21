@@ -16,116 +16,77 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
+          scope: [
+            'openid',
+            'email',
+            'profile',
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.modify'
+          ].join(' '),
           prompt: "consent",
           access_type: "offline",
-          response_type: "code",
-          scope: "openid email profile https://www.googleapis.com/auth/gmail.modify",
-          redirect_uri: `${process.env.NEXTAUTH_URL}/api/auth/callback/google`,
+          response_type: "code"
         }
       }
     }),
   ],
   callbacks: {
-    async jwt({ token, account, profile }) {
-      if (account) {
-        token.accessToken = account.access_token;
-        token.refreshToken = account.refresh_token;
-        token.provider = account.provider;
-        token.expiresAt = account.expires_at;
+    async jwt({ token, account, user }) {
+      // Initial sign in
+      if (account && user) {
+        return {
+          ...token,
+          accessToken: account.access_token,
+          refreshToken: account.refresh_token,
+          accessTokenExpires: account.expires_at ? account.expires_at * 1000 : 0,
+          user: user,
+          email: user.email
+        };
       }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        try {
-          // Use the email as a stable identifier
-          const { data: userData, error } = await supabase
-            .from("users")
-            .select("id")
-            .eq("email", session.user.email)
-            .single();
-
-          if (error) throw error;
-
-          if (userData) {
-            session.user.id = userData.id;
-          }
-          
-          // Add access token to session
-          session.accessToken = token.accessToken as string;
-        } catch (error) {
-          console.error("Error in session callback:", error);
-        }
+      if (session?.user) {
+        session.user.id = token.email as string;
+        session.accessToken = token.accessToken as string;
       }
       return session;
     },
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       try {
-        if (!user.email) return false;
-
-        // Generate a UUID for new users
-        const { data: existingUser, error: fetchError } = await supabase
-          .from("users")
-          .select("id")
-          .eq("email", user.email)
-          .single();
-
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          console.error("Error fetching user:", fetchError);
+        if (!account?.access_token || !account?.refresh_token) {
           return false;
         }
 
-        let userId = existingUser?.id;
+        // Store tokens in Supabase using email as the identifier
+        const { error } = await supabase
+          .from('oauth_tokens')
+          .upsert({
+            user_id: user.email,
+            access_token: account.access_token,
+            refresh_token: account.refresh_token,
+            expires_at: account.expires_at,
+            provider: 'google',
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id'
+          });
 
-        if (!existingUser) {
-          // Insert new user
-          const { data: newUser, error: insertError } = await supabase
-            .from("users")
-            .insert({
-              email: user.email,
-              name: user.name,
-              avatar_url: user.image,
-              updated_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-
-          if (insertError) {
-            console.error("Error creating user:", insertError);
-            return false;
-          }
-          userId = newUser.id;
-        }
-
-        // Store OAuth tokens
-        if (account?.access_token) {
-          const { error: tokenError } = await supabase
-            .from("oauth_tokens")
-            .upsert({
-              user_id: userId,
-              provider: "google",
-              access_token: account.access_token,
-              refresh_token: account.refresh_token,
-              expires_at: account.expires_at,
-              updated_at: new Date().toISOString(),
-            });
-
-          if (tokenError) {
-            console.error("Error storing tokens:", tokenError);
-            return false;
-          }
+        if (error) {
+          console.error('Error storing tokens:', error);
+          return false;
         }
 
         return true;
       } catch (error) {
-        console.error("SignIn error:", error);
+        console.error('SignIn error:', error);
         return false;
       }
     },
   },
   pages: {
-    signIn: "/login",
-    error: "/login", // Changed from "/auth/error" to "/login"
+    signIn: '/login',
+    error: '/login',
   },
   session: {
     strategy: "jwt",

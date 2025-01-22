@@ -16,18 +16,12 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: [
-            'openid',
-            'email',
-            'profile',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.modify'
-          ].join(' '),
           prompt: "consent",
           access_type: "offline",
-          response_type: "code"
-        }
-      }
+          response_type: "code",
+          scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        },
+      },
     }),
   ],
   callbacks: {
@@ -46,17 +40,25 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (session?.user) {
-        session.user.id = token.email as string;
-        session.accessToken = token.accessToken as string;
+      if (session.user) {
+        session.user.name = token.name;
+        session.user.email = token.email;
       }
       return session;
     },
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       try {
         if (!account?.access_token || !account?.refresh_token) {
+          console.error('Missing access or refresh token');
           return false;
         }
+
+        // Add logging to help debug
+        console.log('Sign in attempt:', {
+          email: user.email,
+          hasAccessToken: !!account.access_token,
+          hasRefreshToken: !!account.refresh_token,
+        });
 
         // Store tokens in Supabase using email as the identifier
         const { error } = await supabase
@@ -86,11 +88,22 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/login',
-    error: '/login',
+    error: '/error',
   },
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  logger: {
+    error: (code, ...message) => {
+      console.error('NextAuth Error:', code, message);
+    },
+    warn: (code, ...message) => {
+      console.warn('NextAuth Warning:', code, message);
+    },
+    debug: (code, ...message) => {
+      console.debug('NextAuth Debug:', code, message);
+    },
   },
   debug: process.env.NODE_ENV === "development",
 };

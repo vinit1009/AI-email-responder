@@ -1,10 +1,12 @@
 export interface Email {
   id: string;
+  threadId: string;
   subject: string;
   sender: string;
   date: string;
   snippet: string;
   labelIds: string[];
+  messagesCount?: number;
 }
 
 export interface EmailDetails {

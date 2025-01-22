@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 
 interface Email {
   id: string;
@@ -21,9 +21,9 @@ interface EmailListProps {
 
 export function EmailList({ onEmailSelect }: EmailListProps) {
   const { data: session, status } = useSession();
-  const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emails, setEmails] = useState<Email[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [prevPageTokens, setPrevPageTokens] = useState<string[]>([]);
@@ -31,89 +31,83 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
 
   const fetchEmails = async (token?: string) => {
     try {
-      const url = token 
-        ? `/api/emails?pageToken=${token}`
-        : '/api/emails';
-
+      setLoading(true);
+      const url = token ? `/api/emails?pageToken=${token}` : '/api/emails';
+      
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${session?.user?.email}`,
-          'Content-Type': 'application/json',
         },
       });
-      
-      const data = await response.json();
 
       if (!response.ok) {
         if (response.status === 401) {
           await signIn('google');
           return;
         }
-        throw new Error(data.error || 'Failed to fetch emails');
+        throw new Error('Failed to fetch emails');
       }
+
+      const data = await response.json();
       
-      return data;
-    } catch (err) {
-      console.error('Error fetching emails:', err);
-      throw err;
-    }
-  };
-
-  useEffect(() => {
-    async function loadEmails() {
-      try {
-        setLoading(true);
-        const data = await fetchEmails();
-        setEmails(data.emails);
-        setNextPageToken(data.nextPageToken);
-        setHasNextPage(!!data.nextPageToken);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch emails');
-      } finally {
-        setLoading(false);
+      if (!data.emails || !Array.isArray(data.emails)) {
+        throw new Error('Invalid emails data received');
       }
-    }
 
-    if (status === 'authenticated' && session?.user?.email) {
-      loadEmails();
-    }
-  }, [session, status]);
+      // Transform the emails to match our interface
+      const transformedEmails = data.emails.map((email: any) => ({
+        id: email.id || email.messageId,
+        threadId: email.threadId || email.id,
+        subject: email.subject || '(No Subject)',
+        sender: email.sender || email.from || 'Unknown Sender',
+        snippet: email.snippet || '',
+        date: email.date || new Date().toISOString(),
+        labelIds: email.labelIds || [],
+        messagesCount: email.messagesCount || 1
+      }));
 
-  const handlePageChange = async (direction: 'next' | 'prev') => {
-    try {
-      setLoading(true);
-      if (direction === 'next' && nextPageToken) {
-        // Store current page token before moving to next page
-        setPrevPageTokens(prev => [...prev, nextPageToken]);
-        const data = await fetchEmails(nextPageToken);
-        setEmails(data.emails);
-        setNextPageToken(data.nextPageToken);
-        setHasNextPage(!!data.nextPageToken);
-        setCurrentPage(prev => prev + 1);
-      } else if (direction === 'prev' && currentPage > 1) {
-        // Get the previous page token
-        const newPrevTokens = [...prevPageTokens];
-        const prevToken = newPrevTokens.pop();
-        setPrevPageTokens(newPrevTokens);
-        if (prevToken) {
-          const data = await fetchEmails(prevToken);
-          setEmails(data.emails);
-          setNextPageToken(data.nextPageToken);
-          setHasNextPage(!!data.nextPageToken);
-          setCurrentPage(prev => prev - 1);
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to change page');
+      console.log('Transformed emails:', transformedEmails);
+
+      setEmails(transformedEmails);
+      setNextPageToken(data.nextPageToken);
+      setHasNextPage(!!data.nextPageToken);
+
+    } catch (error) {
+      console.error('Error fetching emails:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch emails');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user?.email) {
+      fetchEmails();
+    }
+  }, [session, status]);
+
+  const handlePageChange = async (direction: 'next' | 'prev') => {
+    try {
+      if (direction === 'next' && nextPageToken) {
+        setPrevPageTokens(prev => [...prev, nextPageToken]);
+        await fetchEmails(nextPageToken);
+        setCurrentPage(prev => prev + 1);
+      } else if (direction === 'prev' && currentPage > 1) {
+        const newPrevTokens = [...prevPageTokens];
+        const prevToken = newPrevTokens.pop();
+        setPrevPageTokens(newPrevTokens);
+        if (prevToken) {
+          await fetchEmails(prevToken);
+          setCurrentPage(prev => prev - 1);
+        }
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to change page');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
-      // First try to parse as ISO date
       const date = new Date(dateString);
       if (!isNaN(date.getTime())) {
         const now = new Date();
@@ -121,17 +115,17 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
         const emailDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
         if (emailDate.getTime() === today.getTime()) {
-          return format(date, 'h:mm a'); // Today's emails show time
+          return format(date, 'h:mm a');
         } else if (date.getFullYear() === now.getFullYear()) {
-          return format(date, 'MMM d'); // This year's emails show month and day
+          return format(date, 'MMM d');
         } else {
-          return format(date, 'MM/dd/yy'); // Older emails show date with year
+          return format(date, 'MM/dd/yy');
         }
       }
-      return dateString; // If parsing fails, return original string
+      return dateString;
     } catch (error) {
       console.error('Error formatting date:', error);
-      return dateString; // Return original string if formatting fails
+      return dateString;
     }
   };
 
@@ -173,98 +167,61 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-y-auto">
-        {emails.length > 0 ? (
-          <>
-            {emails.map((email) => (
-              <div
-                key={email.threadId}
-                className="p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50"
-                onClick={() => onEmailSelect(email)}
-              >
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">
-                    {email.subject}
-                    {email.messagesCount > 1 && (
-                      <span className="ml-2 text-sm text-gray-500">
-                        ({email.messagesCount})
-                      </span>
-                    )}
-                  </h3>
-                  <span className="text-sm text-gray-500">
-                    {formatDate(email.date)}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600">{email.sender}</p>
-                <p className="text-sm text-gray-600 truncate">{email.snippet}</p>
-              </div>
-            ))}
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4">
+      <div className="flex-1 overflow-auto">
+        <div className="space-y-2">
+          {emails.map((email) => (
+            <div
+              key={email.id}
+              className="p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50"
+              onClick={() => {
+                console.log('Email clicked:', email);
+                if (!email.threadId) {
+                  console.error('No threadId for email:', email);
+                  return;
+                }
+                onEmailSelect(email);
+              }}
+            >
               <div className="flex items-center justify-between">
-                <button
-                  onClick={() => handlePageChange('prev')}
-                  disabled={currentPage === 1 || loading}
-                  className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md shadow-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                >
-                  <span className="flex items-center">
-                    <ChevronLeftIcon className="h-4 w-4 mr-1" />
-                    Newer
-                  </span>
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {currentPage}
+                <h3 className="font-medium">
+                  {email.subject}
+                  {email.messagesCount > 1 && (
+                    <span className="ml-2 text-sm text-gray-500">
+                      ({email.messagesCount})
+                    </span>
+                  )}
+                </h3>
+                <span className="text-sm text-gray-500">
+                  {formatDate(email.date)}
                 </span>
-                <button
-                  onClick={() => handlePageChange('next')}
-                  disabled={!hasNextPage || loading}
-                  className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md shadow-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                >
-                  <span className="flex items-center">
-                    Older
-                    <ChevronRightIcon className="h-4 w-4 ml-1" />
-                  </span>
-                </button>
               </div>
+              <p className="text-sm text-gray-600">{email.sender}</p>
+              <p className="text-sm text-gray-600 truncate">{email.snippet}</p>
             </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 p-8">
-            <p>No emails found</p>
-          </div>
-        )}
+          ))}
+        </div>
+      </div>
+      
+      {/* Pagination controls */}
+      <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => handlePageChange('prev')}
+            disabled={currentPage === 1 || loading}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-600">Page {currentPage}</span>
+          <button
+            onClick={() => handlePageChange('next')}
+            disabled={!hasNextPage || loading}
+            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
-  );
-}
-
-function ChevronLeftIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-    </svg>
-  );
-}
-
-function ChevronRightIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
-function RefreshIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  );
-}
-
-function InboxIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg {...props} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-    </svg>
   );
 }

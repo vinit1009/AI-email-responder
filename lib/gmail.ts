@@ -5,15 +5,11 @@ export interface EmailData {
   id: string;
   threadId: string;
   subject: string;
-  sender: {
-    name: string;
-    email: string;
-  };
-  body: string;
-  date: string;
-  read: boolean;
-  labelIds: string[];
+  sender: string;
   snippet: string;
+  date: string;
+  labelIds: string[];
+  messagesCount: number;
 }
 
 export class GmailService {
@@ -46,12 +42,15 @@ export class GmailService {
 
       const emails = await Promise.all(
         response.data.messages.map(async (message) => {
+          if (!message.id) return null;
+
           try {
             const email = await gmail.users.messages.get({
               userId: 'me',
-              id: message.id!,
+              id: message.id,
               format: 'full'
             });
+
             return this.parseEmail(email.data);
           } catch (error) {
             console.error(`Error fetching email ${message.id}:`, error);
@@ -67,65 +66,40 @@ export class GmailService {
     }
   }
 
-  private parseEmail(emailData: any): EmailData {
-    const headers = emailData.payload.headers;
-    const getHeader = (name: string) => headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+  private parseEmail(emailData: any): EmailData | null {
+    try {
+      const headers = emailData.payload?.headers;
+      if (!Array.isArray(headers)) return null;
 
-    const subject = getHeader('Subject');
-    const from = getHeader('From');
-    const date = getHeader('Date');
+      const getHeader = (name: string) => 
+        headers.find((h: any) => h.name.toLowerCase() === name.toLowerCase())?.value || '';
 
-    // Extract body
-    let body = '';
-    const extractBody = (part: any): string => {
-      if (part.body?.data) {
-        return Buffer.from(part.body.data, 'base64').toString();
+      const subject = getHeader('Subject') || '(No subject)';
+      const from = getHeader('From');
+      const date = getHeader('Date') || new Date().toISOString();
+
+      if (!from) return null;
+
+      let sender = from;
+      const fromMatch = from.match(/(?:"?([^"]*)"?\s)?<?(.+@[^>]+)>?/);
+      if (fromMatch) {
+        sender = fromMatch[1]?.trim() || fromMatch[2]?.split('@')[0] || from;
       }
-      if (part.parts) {
-        return part.parts.map(extractBody).join('\n');
-      }
-      return '';
-    };
 
-    if (emailData.payload.parts) {
-      const textPart = emailData.payload.parts.find(
-        (part: any) => part.mimeType === 'text/plain'
-      );
-      if (textPart) {
-        body = extractBody(textPart);
-      } else {
-        body = extractBody(emailData.payload);
-      }
-    } else {
-      body = extractBody(emailData.payload);
-    }
-
-    // Parse sender information
-    let sender = { name: '', email: '' };
-    const fromMatch = from.match(/(?:"?([^"]*)"?\s)?<?(.+@[^>]+)>?/);
-    if (fromMatch) {
-      sender = {
-        name: fromMatch[1] || fromMatch[2].split('@')[0],
-        email: fromMatch[2]
+      return {
+        id: emailData.id,
+        threadId: emailData.threadId,
+        subject,
+        sender,
+        snippet: emailData.snippet || '',
+        date,
+        labelIds: Array.isArray(emailData.labelIds) ? emailData.labelIds : [],
+        messagesCount: 1
       };
-    } else {
-      sender = {
-        name: from,
-        email: from
-      };
+    } catch (error) {
+      console.error('Error parsing email:', error);
+      return null;
     }
-
-    return {
-      id: emailData.id,
-      threadId: emailData.threadId,
-      subject: subject || '(no subject)',
-      sender,
-      body,
-      snippet: emailData.snippet,
-      date,
-      read: !emailData.labelIds.includes('UNREAD'),
-      labelIds: emailData.labelIds
-    };
   }
 
   async markAsRead(messageId: string) {
@@ -141,6 +115,43 @@ export class GmailService {
       });
     } catch (error) {
       console.error('Error marking email as read:', error);
+      throw error;
+    }
+  }
+
+  async getThread(threadId: string) {
+    const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+    
+    try {
+      const thread = await gmail.users.threads.get({
+        userId: 'me',
+        id: threadId,
+        format: 'full'
+      });
+
+      if (!thread.data.messages) {
+        return [];
+      }
+
+      return thread.data.messages.map(message => {
+        const headers = message.payload?.headers || [];
+        const getHeader = (name: string) => 
+          headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+
+        return {
+          id: message.id,
+          threadId: message.threadId,
+          subject: getHeader('Subject'),
+          from: getHeader('From'),
+          to: getHeader('To'),
+          date: getHeader('Date'),
+          snippet: message.snippet || '',
+          labelIds: message.labelIds || [],
+          payload: message.payload // Include the full payload for body processing
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching thread:', error);
       throw error;
     }
   }

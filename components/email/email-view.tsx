@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { format } from "date-fns";
 import DOMPurify from "dompurify";
 import { decode } from "html-entities"; // For decoding special HTML characters
+import { ComposeEmail } from "./compose-email";
 
 interface EmailDetails {
   id: string;
@@ -32,27 +33,50 @@ export function EmailView({ email }: EmailViewProps) {
   const [threadEmails, setThreadEmails] = useState<EmailDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showReplyModal, setShowReplyModal] = useState(false);
 
   useEffect(() => {
+    if (!email?.threadId) {
+      console.log('No threadId provided');
+      return;
+    }
+
     async function fetchThreadEmails() {
       try {
         setLoading(true);
+        console.log('Fetching thread:', email.threadId);
+        
         const response = await fetch(`/api/emails/thread/${email.threadId}`, {
           headers: {
             Authorization: `Bearer ${session?.user?.email}`,
           },
         });
 
+        console.log('Response status:', response.status);
+
         if (!response.ok) {
-          throw new Error("Failed to fetch email thread");
+          throw new Error(`Failed to fetch email thread: ${response.status}`);
         }
 
         const data = await response.json();
+        console.log('Thread data received:', data);
+
+        if (!data.messages || !Array.isArray(data.messages)) {
+          throw new Error('Invalid thread data format');
+        }
+
         const processedEmails = data.messages.map((message: any) => ({
-          ...message,
-          body: message.payload ? processEmailBody(message.payload) : message.snippet
+          id: message.id,
+          subject: message.payload?.headers?.find((h: any) => h.name === 'Subject')?.value || '(No subject)',
+          from: message.payload?.headers?.find((h: any) => h.name === 'From')?.value || '',
+          to: message.payload?.headers?.find((h: any) => h.name === 'To')?.value || '',
+          date: message.payload?.headers?.find((h: any) => h.name === 'Date')?.value || '',
+          body: message.payload ? processEmailBody(message.payload) : message.snippet,
+          snippet: message.snippet || '',
+          labelIds: message.labelIds || []
         }));
 
+        console.log('Processed emails:', processedEmails);
         setThreadEmails(processedEmails);
       } catch (err) {
         console.error("Error fetching email thread:", err);
@@ -240,9 +264,25 @@ export function EmailView({ email }: EmailViewProps) {
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="p-6 border-b border-gray-200">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-4">
-          {email.subject}
-        </h1>
+        <div className="flex justify-between items-start mb-4">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            {email.subject}
+          </h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowReplyModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Reply
+            </button>
+            <button
+              onClick={() => copyToClipboard(threadEmails[0]?.body || "")}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+            >
+              Copy Content
+            </button>
+          </div>
+        </div>
         {threadEmails.length > 1 && (
           <div className="text-sm text-gray-500 mb-4">
             {threadEmails.length} messages
@@ -261,12 +301,6 @@ export function EmailView({ email }: EmailViewProps) {
             <span className="text-gray-500 w-16">Date:</span>
             <span className="text-gray-900">{formatDate(threadEmails[0].date)}</span>
           </div>
-          <button
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded"
-            onClick={() => copyToClipboard(threadEmails[0].body || "")}
-          >
-            Copy Email Content
-          </button>
         </div>
       </div>
       <div className="flex-1 p-6 overflow-auto">
@@ -295,6 +329,18 @@ export function EmailView({ email }: EmailViewProps) {
           </div>
         ))}
       </div>
+
+      {showReplyModal && (
+        <ComposeEmail
+          onClose={() => setShowReplyModal(false)}
+          replyTo={{
+            to: threadEmails[0]?.from || email.sender,
+            subject: email.subject,
+            threadId: email.threadId,
+            emails: threadEmails,
+          }}
+        />
+      )}
     </div>
   );
 }

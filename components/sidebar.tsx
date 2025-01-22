@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ComposeEmail } from './compose-email';
+import { ComposeEmail } from './email/compose-email';
 
 export function Sidebar() {
   const [showCompose, setShowCompose] = useState(false);

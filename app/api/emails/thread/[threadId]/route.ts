@@ -10,8 +10,11 @@ export async function GET(
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {
+      console.error('No session or email found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    console.log('Fetching thread:', params.threadId);
 
     const oauth2Client = await getOAuth2Client(session.user.email);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
@@ -22,11 +25,17 @@ export async function GET(
       format: 'full',
     });
 
+    if (!thread.data) {
+      console.error('No thread data received');
+      return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+    }
+
+    console.log('Thread fetched successfully');
     return NextResponse.json(thread.data);
   } catch (error) {
     console.error('Error fetching email thread:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch email thread' },
+      { error: 'Failed to fetch email thread', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

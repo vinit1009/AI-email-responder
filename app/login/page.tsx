@@ -24,13 +24,13 @@ export default function LoginPage() {
         <div className="absolute w-[60vw] h-[60vw] left-[70%] top-[20%] bg-emerald-500 blur-[8rem] opacity-20 rounded-full"></div>
         <div className="absolute w-[45vw] h-[45vw] left-[50%] top-[25%] bg-blue-500 blur-[7rem] opacity-20 rounded-full"></div>
       </div>
-
+      
       <div className="relative z-10 bg-white p-8 rounded-xl shadow-xl max-w-md w-full mx-4">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
           <p className="text-gray-600">Sign in to continue to AImail</p>
         </div>
-
+        
         <button
           onClick={handleGoogleLogin}
           className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-lg px-6 py-4 text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
@@ -52,4 +52,4 @@ export default function LoginPage() {
       </div>
     </div>
   );
-}
+} 

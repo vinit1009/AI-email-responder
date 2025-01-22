@@ -16,45 +16,43 @@ export async function GET(request: Request) {
     const oauth2Client = await getOAuth2Client(session.user.email);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Fetch threads instead of messages
-    const response = await gmail.users.threads.list({
+    const response = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 20,
+      maxResults: 50,
       pageToken: pageToken || undefined,
     });
 
-    const threads = response.data.threads || [];
+    const messages = response.data.messages || [];
     const nextPageToken = response.data.nextPageToken;
 
-    // Get detailed information for each thread
-    const threadDetails = await Promise.all(
-      threads.map(async (thread) => {
-        const threadData = await gmail.users.threads.get({
+    // Get detailed information for each message
+    const messageDetails = await Promise.all(
+      messages.map(async (message) => {
+        const messageData = await gmail.users.messages.get({
           userId: 'me',
-          id: thread.id!,
+          id: message.id!,
           format: 'metadata',
           metadataHeaders: ['From', 'Subject', 'Date'],
         });
 
-        const messages = threadData.data.messages || [];
-        const latestMessage = messages[messages.length - 1];
-        const headers = latestMessage.payload?.headers || [];
-
+        const headers = messageData.data.payload?.headers || [];
+        
         return {
-          threadId: thread.id,
+          messageId: message.id,
+          threadId: messageData.data.threadId,
           subject: headers.find(h => h.name === 'Subject')?.value || 'No Subject',
           sender: headers.find(h => h.name === 'From')?.value || 'Unknown Sender',
           date: headers.find(h => h.name === 'Date')?.value || '',
-          snippet: latestMessage.snippet || '',
-          messagesCount: messages.length,
-          labelIds: latestMessage.labelIds || [],
-          id: latestMessage.id,
+          snippet: messageData.data.snippet || '',
+          labelIds: messageData.data.labelIds || [],
         };
       })
     );
 
+    console.log('Message details:', messageDetails);
+
     return NextResponse.json({
-      emails: threadDetails,
+      emails: messageDetails,
       nextPageToken,
     });
   } catch (error) {

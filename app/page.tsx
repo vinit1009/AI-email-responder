@@ -1,9 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { EmailList } from "@/components/email/email-list";
+import { EmailView } from "@/components/email/email-view";
 
+// Define the Email interface here instead of importing from @prisma/client
+interface Email {
+  id: string;
+  threadId: string;
+  subject: string;
+  sender: string;
+  snippet: string;
+  date: string;
+  labelIds: string[];
+  messagesCount: number;
+}
 
 export default function Home() {
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  
+  console.log('Selected email:', selectedEmail);
+
   return (
     <div className="relative flex min-h-screen items-center justify-start bg-gradient-to-r from-white to-green-50">
       {/* Gradient Bubble Decorations */}
@@ -75,6 +93,14 @@ export default function Home() {
             <p className="text-gray-600">Enterprise-grade security with end-to-end encryption.</p>
           </div>
         </div>
+      </div>
+
+      <div className="flex h-screen">
+        <EmailList onEmailSelect={(email: Email | null) => {
+          console.log('Email selected:', email);
+          setSelectedEmail(email);
+        }} />
+        {selectedEmail && <EmailView email={selectedEmail} />}
       </div>
     </div>
   );

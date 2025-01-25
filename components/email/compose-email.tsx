@@ -35,6 +35,15 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
       setSending(true);
       setError(null);
 
+      // Format the email content with proper HTML structure
+      const formattedContent = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          ${content.split('\n').map(line => 
+            line.trim() ? `<p style="margin: 0 0 1em 0;">${line}</p>` : '<br/>'
+          ).join('')}
+        </div>
+      `;
+
       const response = await fetch('/api/emails/send', {
         method: 'POST',
         headers: {
@@ -44,7 +53,7 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
         body: JSON.stringify({
           to,
           subject,
-          content,
+          content: formattedContent,
           threadId: replyTo?.threadId,
         }),
       });

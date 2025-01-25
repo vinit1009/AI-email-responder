@@ -3,24 +3,15 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
-import { Sidebar } from "@/components/email/sidebar";
+import { EmailSidebar } from "@/components/email/sidebar";
 import { EmailList } from "@/components/email/email-list";
 import { EmailView } from "@/components/email/email-view";
-
-// Define the Email interface
-interface Email {
-  id: string;
-  subject: string;
-  sender: string;
-  body: string;
-  date: string;
-  importance?: 'high' | 'medium' | 'low';
-  aiSuggestedResponse?: string;
-}
+import type { Email } from "@/types/email";
 
 export default function InboxPage() {
   const { data: session, status } = useSession();
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [currentView, setCurrentView] = useState<'inbox' | 'starred'>('inbox');
 
   if (status === "loading") {
     return <div>Loading...</div>;
@@ -30,24 +21,25 @@ export default function InboxPage() {
     redirect("/login");
   }
 
-  // Ensure we have the session token before rendering the main content
   if (!session?.user?.email) {
     return <div>Please sign in to access your inbox</div>;
   }
 
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <Sidebar />
+      <EmailSidebar 
+        currentView={currentView}
+        onViewChange={setCurrentView}
+      />
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Email List */}
         <div className={`${selectedEmail ? 'w-2/5' : 'w-full'} border-r border-gray-200 bg-white`}>
-          <EmailList onEmailSelect={(email: Email | null) => setSelectedEmail(email)} />
+          <EmailList 
+            currentView={currentView}
+            onEmailSelect={setSelectedEmail} 
+          />
         </div>
 
-        {/* Email View */}
         {selectedEmail && (
           <div className="w-3/5 bg-white">
             <EmailView email={selectedEmail} />

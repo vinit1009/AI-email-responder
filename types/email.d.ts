@@ -3,10 +3,10 @@ export interface Email {
   threadId: string;
   subject: string;
   sender: string;
-  date: string;
   snippet: string;
+  date: string;
   labelIds: string[];
-  messagesCount?: number;
+  messagesCount: number;
 }
 
 export interface EmailDetails {

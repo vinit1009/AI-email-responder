@@ -12,14 +12,20 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const pageToken = searchParams.get('pageToken');
+    const view = searchParams.get('view') || 'inbox';
 
     const oauth2Client = await getOAuth2Client(session.user.email);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
+    // Add query parameter for starred emails
+    const query = view === 'starred' ? 'is:starred' : '';
+
+    // Set maxResults to 50
     const response = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 50,
+      maxResults: 50, // Ensure we get 50 emails per page
       pageToken: pageToken || undefined,
+      q: query,
     });
 
     const messages = response.data.messages || [];
@@ -38,22 +44,22 @@ export async function GET(request: Request) {
         const headers = messageData.data.payload?.headers || [];
         
         return {
-          messageId: message.id,
+          id: message.id,
           threadId: messageData.data.threadId,
           subject: headers.find(h => h.name === 'Subject')?.value || 'No Subject',
           sender: headers.find(h => h.name === 'From')?.value || 'Unknown Sender',
           date: headers.find(h => h.name === 'Date')?.value || '',
           snippet: messageData.data.snippet || '',
           labelIds: messageData.data.labelIds || [],
+          messagesCount: 1, // You can update this if needed
         };
       })
     );
 
-    console.log('Message details:', messageDetails);
-
     return NextResponse.json({
       emails: messageDetails,
       nextPageToken,
+      resultsCount: messageDetails.length,
     });
   } catch (error) {
     console.error('Error fetching emails:', error);

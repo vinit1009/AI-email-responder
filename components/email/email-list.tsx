@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { format } from "date-fns";
+import { Star } from 'lucide-react';
 
 interface Email {
   id: string;
@@ -16,10 +17,11 @@ interface Email {
 }
 
 interface EmailListProps {
+  currentView: 'inbox' | 'starred';
   onEmailSelect: (email: Email | null) => void;
 }
 
-export function EmailList({ onEmailSelect }: EmailListProps) {
+export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,11 +30,14 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [prevPageTokens, setPrevPageTokens] = useState<string[]>([]);
   const [hasNextPage, setHasNextPage] = useState(false);
+  const [totalEmails, setTotalEmails] = useState(0);
 
   const fetchEmails = async (token?: string) => {
     try {
       setLoading(true);
-      const url = token ? `/api/emails?pageToken=${token}` : '/api/emails';
+      const url = token 
+        ? `/api/emails?pageToken=${token}&view=${currentView}` 
+        : `/api/emails?view=${currentView}`;
       
       const response = await fetch(url, {
         headers: {
@@ -69,6 +74,7 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
       console.log('Transformed emails:', transformedEmails);
 
       setEmails(transformedEmails);
+      setTotalEmails(data.resultsCount || transformedEmails.length);
       setNextPageToken(data.nextPageToken);
       setHasNextPage(!!data.nextPageToken);
 
@@ -84,7 +90,7 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
     if (status === 'authenticated' && session?.user?.email) {
       fetchEmails();
     }
-  }, [session, status]);
+  }, [session, status, currentView]);
 
   const handlePageChange = async (direction: 'next' | 'prev') => {
     try {
@@ -129,6 +135,43 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
     }
   };
 
+  const toggleStar = async (e: React.MouseEvent, emailId: string) => {
+    e.stopPropagation(); // Prevent email selection when clicking star
+    try {
+      const email = emails.find(e => e.id === emailId);
+      if (!email) return;
+
+      const isCurrentlyStarred = email.labelIds.includes('STARRED');
+      
+      const response = await fetch('/api/emails/star', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.user?.email}`,
+        },
+        body: JSON.stringify({
+          messageId: emailId,
+          starred: !isCurrentlyStarred,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to toggle star');
+
+      // Update local state
+      setEmails(emails.map(email => {
+        if (email.id === emailId) {
+          const newLabelIds = isCurrentlyStarred
+            ? email.labelIds.filter(id => id !== 'STARRED')
+            : [...email.labelIds, 'STARRED'];
+          return { ...email, labelIds: newLabelIds };
+        }
+        return email;
+      }));
+    } catch (error) {
+      console.error('Error toggling star:', error);
+    }
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -166,24 +209,50 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-auto">
-        <div className="space-y-2">
-          {emails.map((email) => (
-            <div
-              key={email.id}
-              className="p-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50"
-              onClick={() => {
-                console.log('Email clicked:', email);
-                if (!email.threadId) {
-                  console.error('No threadId for email:', email);
-                  return;
-                }
-                onEmailSelect(email);
-              }}
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Email List */}
+      <div className="flex-1 overflow-y-auto">
+        {emails.map((email) => (
+          <div
+            key={email.id}
+            className="px-4 py-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50 flex items-start"
+            onClick={() => {
+              if (!email.threadId) {
+                console.error('No threadId for email:', email);
+                return;
+              }
+              onEmailSelect(email);
+              // Mark as read when opening
+              if (email.labelIds.includes('UNREAD')) {
+                fetch('/api/emails/mark-read', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session?.user?.email}`,
+                  },
+                  body: JSON.stringify({ messageId: email.id }),
+                });
+              }
+            }}
+          >
+            <button
+              onClick={(e) => toggleStar(e, email.id)}
+              className="mr-4 text-gray-400 hover:text-yellow-400 flex-shrink-0 mt-1"
             >
+              <Star
+                className={`h-5 w-5 ${
+                  email.labelIds.includes('STARRED')
+                    ? 'fill-yellow-400 text-yellow-400'
+                    : ''
+                }`}
+              />
+            </button>
+
+            <div className="min-w-0 flex-1"> {/* Add min-w-0 to prevent overflow */}
               <div className="flex items-center justify-between">
-                <h3 className="font-medium">
+                <h3 className={`font-medium truncate mr-2 ${
+                  email.labelIds.includes('UNREAD') ? 'font-bold' : ''
+                }`}>
                   {email.subject}
                   {email.messagesCount > 1 && (
                     <span className="ml-2 text-sm text-gray-500">
@@ -191,19 +260,25 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
                     </span>
                   )}
                 </h3>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-500 flex-shrink-0">
                   {formatDate(email.date)}
                 </span>
               </div>
-              <p className="text-sm text-gray-600">{email.sender}</p>
+              <p className={`text-sm truncate ${
+                email.labelIds.includes('UNREAD')
+                  ? 'text-gray-900 font-medium'
+                  : 'text-gray-600'
+              }`}>
+                {email.sender}
+              </p>
               <p className="text-sm text-gray-600 truncate">{email.snippet}</p>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
       
       {/* Pagination controls */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4">
+      <div className="flex-shrink-0 border-t border-gray-200 bg-white p-4">
         <div className="flex items-center justify-between">
           <button
             onClick={() => handlePageChange('prev')}
@@ -212,7 +287,9 @@ export function EmailList({ onEmailSelect }: EmailListProps) {
           >
             Previous
           </button>
-          <span className="text-sm text-gray-600">Page {currentPage}</span>
+          <span className="text-sm text-gray-600">
+            Page {currentPage} • {totalEmails} emails
+          </span>
           <button
             onClick={() => handlePageChange('next')}
             disabled={!hasNextPage || loading}

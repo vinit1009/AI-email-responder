@@ -1,10 +1,15 @@
 "use client";
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { Star, Inbox, Mail, PenSquare } from 'lucide-react';
 import { ComposeEmail } from './compose-email';
 
-export function Sidebar() {
+interface SidebarProps {
+  currentView: 'inbox' | 'starred';
+  onViewChange: (view: 'inbox' | 'starred') => void;
+}
+
+export function EmailSidebar({ currentView, onViewChange }: SidebarProps) {
   const [showCompose, setShowCompose] = useState(false);
 
   return (
@@ -15,13 +20,37 @@ export function Sidebar() {
 
       <button
         onClick={() => setShowCompose(true)}
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center mb-4"
+        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center mb-6"
       >
-        <PencilIcon className="h-5 w-5 mr-2" />
+        <PenSquare className="h-5 w-5 mr-2" />
         Compose
       </button>
 
-      {/* ... rest of existing sidebar content ... */}
+      <nav className="space-y-1">
+        <button
+          onClick={() => onViewChange('inbox')}
+          className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+            currentView === 'inbox'
+              ? 'bg-blue-100 text-blue-600'
+              : 'text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Inbox className="h-5 w-5" />
+          <span>Inbox</span>
+        </button>
+
+        <button
+          onClick={() => onViewChange('starred')}
+          className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+            currentView === 'starred'
+              ? 'bg-blue-100 text-blue-600'
+              : 'text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Star className="h-5 w-5" />
+          <span>Starred</span>
+        </button>
+      </nav>
     </div>
   );
 }

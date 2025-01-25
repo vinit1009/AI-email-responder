@@ -116,32 +116,39 @@ export function EmailView({ email }: EmailViewProps) {
       }
     }
 
-    return "Content not available";
+    return "";
   };
 
   const decodeEmailBody = (data: string, mimeType: string) => {
     try {
-      const raw = atob(data.replace(/-/g, "+").replace(/_/g, "/"));
-      const decodedContent = decode(raw); // Decode HTML entities first
+      // First decode the base64 content
+      const decodedContent = atob(data.replace(/-/g, '+').replace(/_/g, '/'));
+      
+      // Convert to UTF-8
+      const bytes = new Uint8Array(decodedContent.length);
+      for (let i = 0; i < decodedContent.length; i++) {
+        bytes[i] = decodedContent.charCodeAt(i);
+      }
+      const text = new TextDecoder('utf-8').decode(bytes);
 
-      if (mimeType === "text/html") {
-        return formatEmailContent(decodedContent);
+      // Decode HTML entities
+      const decodedText = decode(text);
+
+      if (mimeType === 'text/plain') {
+        // Convert plain text to HTML with proper line breaks
+        return decodedText
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;')
+          .replace(/\n/g, '<br>');
       }
 
-      // For plain text, improve formatting by:
-      // 1. Decode HTML entities
-      // 2. Split by newlines
-      // 3. Remove empty lines
-      // 4. Wrap each line in paragraph tags
-      return decodedContent
-        .split(/\r?\n/) // Split on both \r\n and \n
-        .map(line => line.trim())
-        .filter(line => line.length > 0) // Remove empty lines
-        .map(line => `<p>${line}</p>`)
-        .join('\n');
+      return decodedText;
     } catch (error) {
-      console.error("Error decoding email body:", error);
-      return "Failed to decode email content.";
+      console.error('Error decoding email body:', error);
+      return 'Error decoding email content';
     }
   };
 
@@ -357,7 +364,7 @@ export function EmailView({ email }: EmailViewProps) {
                          prose-strong:text-neutral-900
                          prose-pre:bg-neutral-50 prose-pre:text-neutral-800"
                 dangerouslySetInnerHTML={{
-                  __html: threadEmail.body,
+                  __html: DOMPurify.sanitize(threadEmail.body),
                 }}
               />
             </div>

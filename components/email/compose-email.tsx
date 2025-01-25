@@ -35,11 +35,21 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
       setSending(true);
       setError(null);
 
-      // Format the email content with proper HTML structure
+      // Format the email content with proper HTML structure and encoding
       const formattedContent = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+                    line-height: 1.6; color: #333;">
           ${content.split('\n').map(line => 
-            line.trim() ? `<p style="margin: 0 0 1em 0;">${line}</p>` : '<br/>'
+            line.trim() 
+              ? `<p style="margin: 0 0 1em 0;">${
+                  line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;')
+                }</p>` 
+              : '<br/>'
           ).join('')}
         </div>
       `;

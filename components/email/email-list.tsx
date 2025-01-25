@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { format } from "date-fns";
 import { Star, Loader2 } from 'lucide-react';
+import { decode } from 'html-entities';
 
 interface Email {
   id: string;
@@ -217,6 +218,21 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
     };
   };
 
+  const formatEmailContent = (text: string) => {
+    // Decode HTML entities and clean up special characters
+    return decode(text)
+      .replace(/&\w+;/g, match => {
+        switch (match) {
+          case '&quot;': return '"';
+          case '&apos;': return "'";
+          case '&amp;': return '&';
+          case '&lt;': return '<';
+          case '&gt;': return '>';
+          default: return match;
+        }
+      });
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="h-full flex flex-col overflow-hidden bg-white">
@@ -330,7 +346,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
                     {getEmailDisplay(email).primary}
                   </p>
                   <p className="text-sm text-neutral-500 truncate leading-relaxed">
-                    {email.snippet}
+                    {formatEmailContent(email.snippet)}
                   </p>
                 </div>
               </div>

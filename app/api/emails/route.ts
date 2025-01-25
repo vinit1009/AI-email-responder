@@ -17,8 +17,21 @@ export async function GET(request: Request) {
     const oauth2Client = await getOAuth2Client(session.user.email);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Add query parameter for starred emails
-    const query = view === 'starred' ? 'is:starred' : '';
+    // Get the query based on the view
+    let query = '';
+    switch (view) {
+      case 'inbox':
+        query = 'in:inbox';
+        break;
+      case 'starred':
+        query = 'is:starred';
+        break;
+      case 'sent':
+        query = 'in:sent';
+        break;
+      default:
+        query = 'in:inbox';
+    }
 
     // Set maxResults to 50
     const response = await gmail.users.messages.list({

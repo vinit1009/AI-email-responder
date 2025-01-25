@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from 'react';
-import { Star, Inbox, Mail, PenSquare } from 'lucide-react';
+import { Star, Inbox, Mail, PenSquare, SendHorizontal } from 'lucide-react';
 import { ComposeEmail } from './compose-email';
 
 interface SidebarProps {
-  currentView: 'inbox' | 'starred';
-  onViewChange: (view: 'inbox' | 'starred') => void;
+  currentView: 'inbox' | 'starred' | 'sent';
+  onViewChange: (view: 'inbox' | 'starred' | 'sent') => void;
 }
 
 export function EmailSidebar({ currentView, onViewChange }: SidebarProps) {
@@ -37,6 +37,18 @@ export function EmailSidebar({ currentView, onViewChange }: SidebarProps) {
         >
           <Inbox className="h-5 w-5" />
           <span>Inbox</span>
+        </button>
+
+        <button
+          onClick={() => onViewChange('sent')}
+          className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+            currentView === 'sent'
+              ? 'bg-blue-100 text-blue-600'
+              : 'text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <SendHorizontal className="h-5 w-5" />
+          <span>Sent</span>
         </button>
 
         <button

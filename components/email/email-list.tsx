@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { format } from "date-fns";
-import { Star } from 'lucide-react';
+import { Star, Loader2 } from 'lucide-react';
 
 interface Email {
   id: string;
@@ -21,6 +21,24 @@ interface EmailListProps {
   onEmailSelect: (email: Email | null) => void;
 }
 
+function EmailSkeleton() {
+  return (
+    <div className="px-6 py-4 border-b border-neutral-200 animate-pulse">
+      <div className="flex items-start space-x-4">
+        <div className="mt-1 h-7 w-7 rounded-full bg-neutral-200" />
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <div className="h-5 bg-neutral-200 rounded w-1/3" />
+            <div className="h-4 bg-neutral-200 rounded w-16" />
+          </div>
+          <div className="h-4 bg-neutral-200 rounded w-1/4 mb-1" />
+          <div className="h-4 bg-neutral-200 rounded w-2/3" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
@@ -31,10 +49,19 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const [prevPageTokens, setPrevPageTokens] = useState<string[]>([]);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalEmails, setTotalEmails] = useState(0);
+  const [cachedEmails, setCachedEmails] = useState<Record<string, Email[]>>({});
 
   const fetchEmails = async (token?: string) => {
     try {
       setLoading(true);
+      
+      // Check cache first
+      if (!token && cachedEmails[currentView]) {
+        setEmails(cachedEmails[currentView]);
+        setLoading(false);
+        return;
+      }
+
       const url = token 
         ? `/api/emails?pageToken=${token}&view=${currentView}` 
         : `/api/emails?view=${currentView}`;
@@ -59,7 +86,6 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
         throw new Error('Invalid emails data received');
       }
 
-      // Transform the emails to match our interface
       const transformedEmails = data.emails.map((email: any) => ({
         id: email.id || email.messageId,
         threadId: email.threadId || email.id,
@@ -71,7 +97,11 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
         messagesCount: email.messagesCount || 1
       }));
 
-      console.log('Transformed emails:', transformedEmails);
+      // Update cache
+      setCachedEmails(prev => ({
+        ...prev,
+        [currentView]: transformedEmails
+      }));
 
       setEmails(transformedEmails);
       setTotalEmails(data.resultsCount || transformedEmails.length);
@@ -174,19 +204,23 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
 
   if (status === 'loading' || loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="h-full flex flex-col overflow-hidden bg-white">
+        <div className="flex-1 overflow-y-auto">
+          {[...Array(8)].map((_, i) => (
+            <EmailSkeleton key={i} />
+          ))}
+        </div>
       </div>
     );
   }
 
   if (status === 'unauthenticated') {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-4">
-        <p className="text-gray-600 mb-4">Please sign in to view your emails</p>
+      <div className="flex flex-col items-center justify-center h-full p-8 m-4 bg-white rounded-lg shadow-lg">
+        <p className="text-neutral-600 mb-6 text-lg">Please sign in to view your emails</p>
         <button
           onClick={() => signIn('google')}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="px-6 py-3 bg-black text-white rounded-lg hover:bg-neutral-800 transition-colors duration-200 font-medium"
         >
           Sign in with Google
         </button>
@@ -196,11 +230,11 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-4">
-        <p className="text-red-600 mb-4">{error}</p>
+      <div className="flex flex-col items-center justify-center h-full p-8 m-4 bg-white rounded-lg shadow-lg">
+        <p className="text-red-600 mb-6 text-lg">{error}</p>
         <button 
           onClick={() => window.location.reload()} 
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          className="px-6 py-3 bg-black text-white rounded-lg hover:bg-neutral-800 transition-colors duration-200 font-medium"
         >
           Retry
         </button>
@@ -209,13 +243,12 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Email List */}
+    <div className="h-full flex flex-col overflow-hidden bg-white">
       <div className="flex-1 overflow-y-auto">
         {emails.map((email) => (
           <div
             key={email.id}
-            className="px-4 py-3 border-b border-gray-200 cursor-pointer hover:bg-gray-50 flex items-start"
+            className="group px-6 py-4 border-b border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-all duration-200"
             onClick={() => {
               if (!email.threadId) {
                 console.error('No threadId for email:', email);
@@ -235,65 +268,72 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
               }
             }}
           >
-            <button
-              onClick={(e) => toggleStar(e, email.id)}
-              className="mr-4 text-gray-400 hover:text-yellow-400 flex-shrink-0 mt-1"
-            >
-              <Star
-                className={`h-5 w-5 ${
-                  email.labelIds.includes('STARRED')
-                    ? 'fill-yellow-400 text-yellow-400'
-                    : ''
-                }`}
-              />
-            </button>
+            <div className="flex items-start space-x-4">
+              <button
+                onClick={(e) => toggleStar(e, email.id)}
+                className="mt-1 p-1 rounded-full hover:bg-neutral-100 transition-colors duration-200"
+              >
+                <Star
+                  className={`h-5 w-5 transition-colors duration-200 ${
+                    email.labelIds.includes('STARRED')
+                      ? 'fill-yellow-400 text-yellow-400'
+                      : 'text-neutral-400 group-hover:text-neutral-600'
+                  }`}
+                />
+              </button>
 
-            <div className="min-w-0 flex-1"> {/* Add min-w-0 to prevent overflow */}
-              <div className="flex items-center justify-between">
-                <h3 className={`font-medium truncate mr-2 ${
-                  email.labelIds.includes('UNREAD') ? 'font-bold' : ''
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className={`truncate mr-4 text-neutral-900 ${
+                    email.labelIds.includes('UNREAD') ? 'font-bold' : 'font-medium'
+                  }`}>
+                    {email.subject}
+                    {email.messagesCount > 1 && (
+                      <span className="ml-2 text-sm text-neutral-500 font-normal">
+                        ({email.messagesCount})
+                      </span>
+                    )}
+                  </h3>
+                  <span className="text-sm text-neutral-500 flex-shrink-0 font-medium">
+                    {formatDate(email.date)}
+                  </span>
+                </div>
+                <p className={`text-sm truncate mb-1 ${
+                  email.labelIds.includes('UNREAD')
+                    ? 'text-neutral-800 font-medium'
+                    : 'text-neutral-600'
                 }`}>
-                  {email.subject}
-                  {email.messagesCount > 1 && (
-                    <span className="ml-2 text-sm text-gray-500">
-                      ({email.messagesCount})
-                    </span>
-                  )}
-                </h3>
-                <span className="text-sm text-gray-500 flex-shrink-0">
-                  {formatDate(email.date)}
-                </span>
+                  {email.sender}
+                </p>
+                <p className="text-sm text-neutral-500 truncate leading-relaxed">
+                  {email.snippet}
+                </p>
               </div>
-              <p className={`text-sm truncate ${
-                email.labelIds.includes('UNREAD')
-                  ? 'text-gray-900 font-medium'
-                  : 'text-gray-600'
-              }`}>
-                {email.sender}
-              </p>
-              <p className="text-sm text-gray-600 truncate">{email.snippet}</p>
             </div>
           </div>
         ))}
       </div>
       
-      {/* Pagination controls */}
-      <div className="flex-shrink-0 border-t border-gray-200 bg-white p-4">
-        <div className="flex items-center justify-between">
+      <div className="flex-shrink-0 border-t border-neutral-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between max-w-2xl mx-auto">
           <button
             onClick={() => handlePageChange('prev')}
             disabled={currentPage === 1 || loading}
-            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-white border border-neutral-300 rounded-lg 
+                     hover:bg-neutral-50 disabled:opacity-50 disabled:hover:bg-white
+                     transition-colors duration-200 font-medium text-neutral-700"
           >
             Previous
           </button>
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-neutral-600 font-medium">
             Page {currentPage} • {totalEmails} emails
           </span>
           <button
             onClick={() => handlePageChange('next')}
             disabled={!hasNextPage || loading}
-            className="px-3 py-1 text-sm bg-white border border-gray-300 rounded-md disabled:opacity-50"
+            className="px-4 py-2 text-sm bg-white border border-neutral-300 rounded-lg 
+                     hover:bg-neutral-50 disabled:opacity-50 disabled:hover:bg-white
+                     transition-colors duration-200 font-medium text-neutral-700"
           >
             Next
           </button>

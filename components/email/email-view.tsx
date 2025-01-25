@@ -247,14 +247,29 @@ export function EmailView({ email }: EmailViewProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center h-full bg-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-2 border-neutral-300 border-t-neutral-900 rounded-full animate-spin" />
+          <p className="text-sm text-neutral-500">Loading email...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
-    return <div className="p-4 text-red-600">Error: {error}</div>;
+    return (
+      <div className="flex items-center justify-center h-full bg-white p-6">
+        <div className="text-center space-y-4">
+          <p className="text-red-600 bg-red-50 px-4 py-3 rounded-lg">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 text-sm bg-neutral-100 text-neutral-700 rounded-lg hover:bg-neutral-200 transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (!threadEmails.length) {
@@ -263,71 +278,91 @@ export function EmailView({ email }: EmailViewProps) {
 
   return (
     <div className="h-full flex flex-col bg-white">
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex justify-between items-start mb-4">
-          <h1 className="text-2xl font-semibold text-gray-900">
+      <div className="px-8 py-6 border-b border-neutral-200">
+        <div className="flex justify-between items-start mb-6">
+          <h1 className="text-xl font-semibold text-neutral-900 leading-tight">
             {email.subject}
           </h1>
           <div className="flex gap-2">
             <button
               onClick={() => setShowReplyModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              className="px-4 py-2 bg-black text-white rounded-lg hover:bg-neutral-800 
+                       transition-colors font-medium text-sm"
             >
               Reply
             </button>
             <button
               onClick={() => copyToClipboard(threadEmails[0]?.body || "")}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              className="px-4 py-2 bg-neutral-100 text-neutral-700 rounded-lg 
+                       hover:bg-neutral-200 transition-colors font-medium text-sm"
             >
               Copy Content
             </button>
           </div>
         </div>
+
         {threadEmails.length > 1 && (
-          <div className="text-sm text-gray-500 mb-4">
-            {threadEmails.length} messages
+          <div className="text-sm text-neutral-500 mb-4 flex items-center gap-2">
+            <div className="h-1 w-1 rounded-full bg-neutral-400" />
+            {threadEmails.length} messages in conversation
           </div>
         )}
-        <div className="space-y-2">
+
+        <div className="space-y-2 text-sm">
           <div className="flex items-start">
-            <span className="text-gray-500 w-16">From:</span>
-            <span className="text-gray-900 flex-1">{threadEmails[0].from}</span>
+            <span className="text-neutral-500 w-16">From:</span>
+            <span className="text-neutral-800">{threadEmails[0].from}</span>
           </div>
           <div className="flex items-start">
-            <span className="text-gray-500 w-16">To:</span>
-            <span className="text-gray-900 flex-1">{threadEmails[0].to}</span>
+            <span className="text-neutral-500 w-16">To:</span>
+            <span className="text-neutral-800">{threadEmails[0].to}</span>
           </div>
           <div className="flex items-start">
-            <span className="text-gray-500 w-16">Date:</span>
-            <span className="text-gray-900">{formatDate(threadEmails[0].date)}</span>
+            <span className="text-neutral-500 w-16">Date:</span>
+            <span className="text-neutral-800">{formatDate(threadEmails[0].date)}</span>
           </div>
         </div>
       </div>
-      <div className="flex-1 p-6 overflow-auto">
-        {threadEmails.map((threadEmail, index) => (
-          <div 
-            key={threadEmail.id}
-            className={`mb-8 ${index !== threadEmails.length - 1 ? 'border-b border-gray-200 pb-8' : ''}`}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <div className="font-medium">{threadEmail.from}</div>
-                <div className="text-sm text-gray-500">
-                  To: {threadEmail.to}
+
+      <div className="flex-1 overflow-auto">
+        <div className="px-8 py-6 space-y-8">
+          {threadEmails.map((threadEmail, index) => (
+            <div 
+              key={threadEmail.id}
+              className={`${
+                index !== threadEmails.length - 1 
+                  ? 'border-b border-neutral-100 pb-8' 
+                  : ''
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="space-y-1">
+                  <div className="font-medium text-neutral-900">
+                    {threadEmail.from}
+                  </div>
+                  <div className="text-sm text-neutral-500">
+                    To: {threadEmail.to}
+                  </div>
+                </div>
+                <div className="text-sm text-neutral-500 tabular-nums">
+                  {formatDate(threadEmail.date)}
                 </div>
               </div>
-              <div className="text-sm text-gray-500">
-                {formatDate(threadEmail.date)}
-              </div>
+
+              <div
+                className="prose max-w-none prose-neutral
+                         prose-p:text-neutral-600 prose-p:leading-relaxed
+                         prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                         prose-blockquote:border-l-neutral-200 prose-blockquote:text-neutral-500
+                         prose-strong:text-neutral-900
+                         prose-pre:bg-neutral-50 prose-pre:text-neutral-800"
+                dangerouslySetInnerHTML={{
+                  __html: threadEmail.body,
+                }}
+              />
             </div>
-            <div
-              className="prose max-w-none dark:prose-invert"
-              dangerouslySetInnerHTML={{
-                __html: threadEmail.body,
-              }}
-            />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {showReplyModal && (

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { Star, Inbox, Mail, PenSquare, SendHorizontal } from 'lucide-react';
+import { Star, Inbox, SendHorizontal, PenSquare } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { ComposeEmail } from './compose-email';
 
 interface SidebarProps {
@@ -10,59 +11,106 @@ interface SidebarProps {
 }
 
 export function EmailSidebar({ currentView, onViewChange }: SidebarProps) {
+  const { data: session } = useSession();
   const [showCompose, setShowCompose] = useState(false);
 
+  const navigationItems = [
+    {
+      id: 'inbox',
+      label: 'Inbox',
+      icon: Inbox,
+    },
+    {
+      id: 'sent',
+      label: 'Sent',
+      icon: SendHorizontal,
+    },
+    {
+      id: 'starred',
+      label: 'Starred',
+      icon: Star,
+    },
+  ] as const;
+
   return (
-    <div className="w-64 bg-gray-100 p-4 flex flex-col h-full">
+    <div className="w-64 bg-white border-r border-neutral-200 flex flex-col h-full">
       {showCompose && (
         <ComposeEmail onClose={() => setShowCompose(false)} />
       )}
 
-      <button
-        onClick={() => setShowCompose(true)}
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center mb-6"
-      >
-        <PenSquare className="h-5 w-5 mr-2" />
-        Compose
-      </button>
-
-      <nav className="space-y-1">
+      <div className="p-4">
         <button
-          onClick={() => onViewChange('inbox')}
-          className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
-            currentView === 'inbox'
-              ? 'bg-blue-100 text-blue-600'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
+          onClick={() => setShowCompose(true)}
+          className="w-full px-4 py-2.5 bg-black text-white rounded-lg 
+                   hover:bg-neutral-800 transition-all duration-200 
+                   flex items-center justify-center gap-2 font-medium
+                   active:bg-neutral-900 active:scale-[0.98]"
         >
-          <Inbox className="h-5 w-5" />
-          <span>Inbox</span>
+          <PenSquare className="h-4 w-4" />
+          <span>Compose</span>
         </button>
+      </div>
 
-        <button
-          onClick={() => onViewChange('sent')}
-          className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
-            currentView === 'sent'
-              ? 'bg-blue-100 text-blue-600'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <SendHorizontal className="h-5 w-5" />
-          <span>Sent</span>
-        </button>
-
-        <button
-          onClick={() => onViewChange('starred')}
-          className={`w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
-            currentView === 'starred'
-              ? 'bg-blue-100 text-blue-600'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Star className="h-5 w-5" />
-          <span>Starred</span>
-        </button>
+      <nav className="flex-1 px-2 space-y-0.5">
+        {navigationItems.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => onViewChange(id)}
+            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg
+                     transition-all duration-200 group relative
+                     ${currentView === id 
+                       ? 'bg-neutral-100 text-neutral-900' 
+                       : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
+                     }`}
+          >
+            <Icon 
+              className={`h-4 w-4 transition-colors duration-200
+                       ${currentView === id 
+                         ? 'text-neutral-900' 
+                         : 'text-neutral-500 group-hover:text-neutral-900'
+                       }`}
+            />
+            <span className="font-medium text-sm">{label}</span>
+            
+            {/* Active Indicator */}
+            {currentView === id && (
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 
+                           bg-black rounded-r-full" 
+              />
+            )}
+          </button>
+        ))}
       </nav>
+
+      {/* User Profile Section */}
+      {session?.user && (
+        <div className="p-4 border-t border-neutral-200">
+          <div className="flex items-center gap-3 px-2">
+            {session.user.image ? (
+              <img 
+                src={session.user.image} 
+                alt={session.user.name || 'Profile'} 
+                className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-neutral-200 flex-shrink-0 
+                           flex items-center justify-center text-neutral-500">
+                {session.user.name?.[0] || session.user.email?.[0] || '?'}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              {session.user.name && (
+                <p className="text-sm font-medium text-neutral-900 truncate">
+                  {session.user.name}
+                </p>
+              )}
+              <p className="text-xs text-neutral-500 truncate">
+                {session.user.email}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

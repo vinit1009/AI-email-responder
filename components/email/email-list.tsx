@@ -10,6 +10,7 @@ interface Email {
   threadId: string;
   subject: string;
   sender: string;
+  recipient: string;
   snippet: string;
   date: string;
   labelIds: string[];
@@ -91,6 +92,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
         threadId: email.threadId || email.id,
         subject: email.subject || '(No Subject)',
         sender: email.sender || email.from || 'Unknown Sender',
+        recipient: email.recipient || email.to || 'Unknown Recipient',
         snippet: email.snippet || '',
         date: email.date || new Date().toISOString(),
         labelIds: email.labelIds || [],
@@ -200,6 +202,19 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
     } catch (error) {
       console.error('Error toggling star:', error);
     }
+  };
+
+  const getEmailDisplay = (email: Email) => {
+    if (currentView === 'sent') {
+      return {
+        primary: `To: ${email.recipient}`,
+        secondary: `From: ${email.sender}`
+      };
+    }
+    return {
+      primary: `From: ${email.sender}`,
+      secondary: `To: ${email.recipient}`
+    };
   };
 
   if (status === 'loading' || loading) {
@@ -312,7 +327,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
                       ? 'text-neutral-800 font-medium'
                       : 'text-neutral-600'
                   }`}>
-                    {email.sender}
+                    {getEmailDisplay(email).primary}
                   </p>
                   <p className="text-sm text-neutral-500 truncate leading-relaxed">
                     {email.snippet}

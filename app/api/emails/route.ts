@@ -3,6 +3,23 @@ import { getServerSession } from 'next-auth';
 import { google } from 'googleapis';
 import { getOAuth2Client } from '@/lib/google';
 
+function extractEmailAddress(headerValue: string): string {
+  // Handle format: "Name <email@example.com>" or just "email@example.com"
+  const emailMatch = headerValue.match(/<(.+?)>/) || headerValue.match(/([^\s<]+@[^\s>]+)/);
+  return emailMatch ? emailMatch[1] : headerValue;
+}
+
+function formatEmailField(headerValue: string): string {
+  // Handle format: "Name <email@example.com>"
+  const namePart = headerValue.split('<')[0].trim();
+  const emailPart = extractEmailAddress(headerValue);
+  
+  if (namePart && namePart !== emailPart) {
+    return `${namePart} (${emailPart})`;
+  }
+  return emailPart;
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getServerSession();
@@ -51,20 +68,27 @@ export async function GET(request: Request) {
           userId: 'me',
           id: message.id!,
           format: 'metadata',
-          metadataHeaders: ['From', 'Subject', 'Date'],
+          metadataHeaders: ['From', 'Subject', 'Date', 'To'],
         });
 
         const headers = messageData.data.payload?.headers || [];
+        const fromHeader = headers.find(h => h.name === 'From')?.value;
+        const toHeader = headers.find(h => h.name === 'To')?.value;
+
+        // Format the from and to fields
+        const from = fromHeader ? formatEmailField(fromHeader) : 'Unknown Sender';
+        const to = toHeader ? formatEmailField(toHeader) : 'Unknown Recipient';
         
         return {
           id: message.id,
           threadId: messageData.data.threadId,
           subject: headers.find(h => h.name === 'Subject')?.value || 'No Subject',
-          sender: headers.find(h => h.name === 'From')?.value || 'Unknown Sender',
+          sender: from,
+          recipient: to,
           date: headers.find(h => h.name === 'Date')?.value || '',
           snippet: messageData.data.snippet || '',
           labelIds: messageData.data.labelIds || [],
-          messagesCount: 1, // You can update this if needed
+          messagesCount: 1,
         };
       })
     );

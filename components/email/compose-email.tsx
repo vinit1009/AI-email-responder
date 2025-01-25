@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Wand2, Sparkles } from 'lucide-react';
+import { Wand2, Sparkles, X } from 'lucide-react';
 
 interface ComposeEmailProps {
   onClose: () => void;
@@ -130,21 +130,21 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h2 className="text-lg font-semibold">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
+        <div className="px-6 py-4 border-b border-neutral-200 flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-neutral-900">
             {replyTo ? 'Reply' : 'New Message'}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
           >
-            <XMarkIcon className="h-6 w-6" />
+            <X className="h-5 w-5 text-neutral-500" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4">
+        <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
             <div>
               <input
@@ -152,7 +152,9 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
                 placeholder="To"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg 
+                         focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black
+                         text-neutral-900 placeholder:text-neutral-400"
                 disabled={!!replyTo}
               />
             </div>
@@ -162,26 +164,23 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
                 placeholder="Subject"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg 
+                         focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black
+                         text-neutral-900 placeholder:text-neutral-400"
               />
             </div>
-            <div className="relative">
-              <textarea
-                placeholder="Write your message..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={12}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-              />
-              <div className="absolute top-2 right-2 flex gap-2">
+            <div className="space-y-2">
+              <div className="flex gap-2 justify-end">
                 {replyTo && (
                   <button
                     type="button"
                     onClick={generateAIReply}
                     disabled={generating}
-                    className="p-2 text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-md flex items-center gap-2"
+                    className="px-3 py-1.5 text-neutral-600 hover:text-neutral-900 
+                             hover:bg-neutral-100 rounded-lg transition-colors
+                             flex items-center gap-2 text-sm disabled:opacity-50"
                   >
-                    <Wand2 className="h-5 w-5" />
+                    <Wand2 className="h-4 w-4" />
                     {generating ? 'Generating...' : 'AI Generate'}
                   </button>
                 )}
@@ -189,31 +188,48 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
                   type="button"
                   onClick={improveEmail}
                   disabled={improving || !content.trim()}
-                  className="p-2 text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-md flex items-center gap-2"
+                  className="px-3 py-1.5 text-neutral-600 hover:text-neutral-900 
+                           hover:bg-neutral-100 rounded-lg transition-colors
+                           flex items-center gap-2 text-sm disabled:opacity-50"
                 >
-                  <Sparkles className="h-5 w-5" />
+                  <Sparkles className="h-4 w-4" />
                   {improving ? 'Improving...' : 'Improve with AI'}
                 </button>
               </div>
+              <textarea
+                placeholder="Write your message..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={12}
+                className="w-full px-4 py-3 border border-neutral-200 rounded-lg 
+                         focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black
+                         text-neutral-900 placeholder:text-neutral-400 resize-none"
+              />
             </div>
           </div>
 
           {error && (
-            <div className="mt-4 text-red-600 text-sm">{error}</div>
+            <div className="mt-4 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
+              {error}
+            </div>
           )}
 
-          <div className="mt-4 flex justify-end space-x-3">
+          <div className="mt-6 flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              className="px-5 py-2.5 text-neutral-700 bg-neutral-100 rounded-lg 
+                       hover:bg-neutral-200 transition-colors font-medium
+                       disabled:opacity-50"
               disabled={sending}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              className="px-5 py-2.5 bg-black text-white rounded-lg 
+                       hover:bg-neutral-800 transition-colors font-medium
+                       disabled:opacity-50 disabled:hover:bg-black"
               disabled={sending}
             >
               {sending ? 'Sending...' : 'Send'}
@@ -222,24 +238,5 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
         </form>
       </div>
     </div>
-  );
-}
-
-function XMarkIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      strokeWidth={1.5}
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6 18L18 6M6 6l12 12"
-      />
-    </svg>
   );
 } 

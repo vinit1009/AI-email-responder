@@ -85,6 +85,17 @@ export const authOptions: NextAuthOptions = {
         return false;
       }
     },
+    async redirect({ url, baseUrl }) {
+      // Handle both development and production URLs
+      if (url.startsWith("/")) {
+        // For relative URLs, use the baseUrl (which will be different in dev/prod)
+        return `${baseUrl}${url}`
+      } else if (url.startsWith("http://localhost:3000") || url.startsWith("https://ai-email-responder-eta.vercel.app")) {
+        // Allow both localhost and production URLs
+        return url
+      }
+      return baseUrl
+    },
   },
   pages: {
     signIn: '/login',

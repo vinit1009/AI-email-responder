@@ -64,11 +64,18 @@ export async function GET(request: Request) {
     // Get detailed information for each message
     const messageDetails = await Promise.all(
       messages.map(async (message) => {
+        // Get message metadata
         const messageData = await gmail.users.messages.get({
           userId: 'me',
           id: message.id!,
           format: 'metadata',
           metadataHeaders: ['From', 'Subject', 'Date', 'To'],
+        });
+
+        // Get thread information to get message count
+        const threadData = await gmail.users.threads.get({
+          userId: 'me',
+          id: messageData.data.threadId!,
         });
 
         const headers = messageData.data.payload?.headers || [];
@@ -88,7 +95,7 @@ export async function GET(request: Request) {
           date: headers.find(h => h.name === 'Date')?.value || '',
           snippet: messageData.data.snippet || '',
           labelIds: messageData.data.labelIds || [],
-          messagesCount: 1,
+          messagesCount: threadData.data.messages?.length || 1, // Get actual thread message count
         };
       })
     );

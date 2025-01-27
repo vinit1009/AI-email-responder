@@ -74,16 +74,9 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
         },
       });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          await signIn('google');
-          return;
-        }
-        throw new Error('Failed to fetch emails');
-      }
-
       const data = await response.json();
-      
+      console.log('Raw API response:', data);
+
       if (!data.emails || !Array.isArray(data.emails)) {
         throw new Error('Invalid emails data received');
       }
@@ -285,73 +278,78 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
             </p>
           </div>
         ) : (
-          emails.map((email) => (
-            <div
-              key={email.id}
-              className="group px-6 py-4 border-b border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-all duration-200"
-              onClick={() => {
-                if (!email.threadId) {
-                  console.error('No threadId for email:', email);
-                  return;
-                }
-                onEmailSelect(email);
-                // Mark as read when opening
-                if (email.labelIds.includes('UNREAD')) {
-                  fetch('/api/emails/mark-read', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${session?.user?.email}`,
-                    },
-                    body: JSON.stringify({ messageId: email.id }),
-                  });
-                }
-              }}
-            >
-              <div className="flex items-start space-x-4">
-                <button
-                  onClick={(e) => toggleStar(e, email.id)}
-                  className="mt-1 p-1 rounded-full hover:bg-neutral-100 transition-colors duration-200"
-                >
-                  <Star
-                    className={`h-5 w-5 transition-colors duration-200 ${
-                      email.labelIds.includes('STARRED')
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-neutral-400 group-hover:text-neutral-600'
-                    }`}
-                  />
-                </button>
+          emails.map((email) => {
+            console.log('Email thread:', email.subject, 'Count:', email.messagesCount);
+            return (
+              <div
+                key={email.id}
+                className="group px-6 py-4 border-b border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-all duration-200"
+                onClick={() => {
+                  if (!email.threadId) {
+                    console.error('No threadId for email:', email);
+                    return;
+                  }
+                  onEmailSelect(email);
+                  // Mark as read when opening
+                  if (email.labelIds.includes('UNREAD')) {
+                    fetch('/api/emails/mark-read', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${session?.user?.email}`,
+                      },
+                      body: JSON.stringify({ messageId: email.id }),
+                    });
+                  }
+                }}
+              >
+                <div className="flex items-start space-x-4">
+                  <button
+                    onClick={(e) => toggleStar(e, email.id)}
+                    className="mt-1 p-1 rounded-full hover:bg-neutral-100 transition-colors duration-200"
+                  >
+                    <Star
+                      className={`h-5 w-5 transition-colors duration-200 ${
+                        email.labelIds.includes('STARRED')
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-neutral-400 group-hover:text-neutral-600'
+                      }`}
+                    />
+                  </button>
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className={`truncate mr-4 text-neutral-900 ${
-                      email.labelIds.includes('UNREAD') ? 'font-bold' : 'font-medium'
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className={`truncate mr-4 text-neutral-900 ${
+                        email.labelIds.includes('UNREAD') ? 'font-bold' : 'font-medium'
+                      }`}>
+                        {email.subject}
+                        {email.messagesCount > 1 && (
+                          <span className="inline-flex items-center justify-center px-2 py-0.5 
+                                         text-xs font-medium bg-neutral-100 text-neutral-600 
+                                         rounded-full min-w-[1.5rem] ml-2">
+                            {email.messagesCount}
+                          </span>
+                        )}
+                      </h3>
+                      <span className="text-sm text-neutral-500 flex-shrink-0 font-medium">
+                        {formatDate(email.date)}
+                      </span>
+                    </div>
+                    <p className={`text-sm truncate mb-1 ${
+                      email.labelIds.includes('UNREAD')
+                        ? 'text-neutral-800 font-medium'
+                        : 'text-neutral-600'
                     }`}>
-                      {email.subject}
-                      {email.messagesCount > 1 && (
-                        <span className="ml-2 text-sm text-neutral-500 font-normal">
-                          ({email.messagesCount})
-                        </span>
-                      )}
-                    </h3>
-                    <span className="text-sm text-neutral-500 flex-shrink-0 font-medium">
-                      {formatDate(email.date)}
-                    </span>
+                      {getEmailDisplay(email).primary}
+                    </p>
+                    <p className="text-sm text-neutral-500 truncate leading-relaxed">
+                      {formatEmailContent(email.snippet)}
+                    </p>
                   </div>
-                  <p className={`text-sm truncate mb-1 ${
-                    email.labelIds.includes('UNREAD')
-                      ? 'text-neutral-800 font-medium'
-                      : 'text-neutral-600'
-                  }`}>
-                    {getEmailDisplay(email).primary}
-                  </p>
-                  <p className="text-sm text-neutral-500 truncate leading-relaxed">
-                    {formatEmailContent(email.snippet)}
-                  </p>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
       

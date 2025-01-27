@@ -5,6 +5,7 @@ import { useSession, signIn } from 'next-auth/react';
 import { format } from "date-fns";
 import { Star, Loader2 } from 'lucide-react';
 import { decode } from 'html-entities';
+import { EmailCategories } from './email-categories';
 
 interface Email {
   id: string;
@@ -52,84 +53,114 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalEmails, setTotalEmails] = useState(0);
   const [cachedEmails, setCachedEmails] = useState<Record<string, Email[]>>({});
+  const [currentCategory, setCurrentCategory] = useState('all');
+  const [categoryPageTokens, setCategoryPageTokens] = useState<Record<string, string>>({});
+  const [categoryEmails, setCategoryEmails] = useState<Record<string, Email[]>>({});
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [allCategoriesLoaded, setAllCategoriesLoaded] = useState(false);
 
-  const fetchEmails = async (token?: string) => {
+  const categories = [
+    'all',
+    'CATEGORY_PERSONAL',
+    'CATEGORY_UPDATES',
+    'CATEGORY_PROMOTIONS',
+    'CATEGORY_SOCIAL'
+  ];
+
+  const fetchAllCategories = async () => {
     try {
       setLoading(true);
-      
-      // Check cache first
-      if (!token && cachedEmails[currentView]) {
-        setEmails(cachedEmails[currentView]);
-        setLoading(false);
-        return;
-      }
+      const fetchPromises = categories.map(async (category) => {
+        const url = new URL('/api/emails', window.location.origin);
+        url.searchParams.set('view', currentView);
+        url.searchParams.set('category', category);
+        
+        const response = await fetch(url.toString(), {
+          headers: {
+            'Authorization': `Bearer ${session?.user?.email}`,
+          },
+        });
 
-      const url = token 
-        ? `/api/emails?pageToken=${token}&view=${currentView}` 
-        : `/api/emails?view=${currentView}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${session?.user?.email}`,
-        },
+        const data = await response.json();
+        if (!data.emails || !Array.isArray(data.emails)) {
+          throw new Error('Invalid emails data received');
+        }
+
+        return {
+          category,
+          emails: data.emails.map((email: any) => ({
+            id: email.id || email.messageId,
+            threadId: email.threadId || email.id,
+            subject: email.subject || '(No Subject)',
+            sender: email.sender || email.from || 'Unknown Sender',
+            recipient: email.recipient || email.to || 'Unknown Recipient',
+            snippet: email.snippet || '',
+            date: email.date || new Date().toISOString(),
+            labelIds: email.labelIds || [],
+            messagesCount: email.messagesCount || 1
+          })),
+          nextPageToken: data.nextPageToken
+        };
       });
 
-      const data = await response.json();
-      console.log('Raw API response:', data);
+      const results = await Promise.all(fetchPromises);
 
-      if (!data.emails || !Array.isArray(data.emails)) {
-        throw new Error('Invalid emails data received');
-      }
+      // Store all emails by category
+      const emailsByCategory: Record<string, Email[]> = {};
+      const tokensByCategory: Record<string, string> = {};
 
-      const transformedEmails = data.emails.map((email: any) => ({
-        id: email.id || email.messageId,
-        threadId: email.threadId || email.id,
-        subject: email.subject || '(No Subject)',
-        sender: email.sender || email.from || 'Unknown Sender',
-        recipient: email.recipient || email.to || 'Unknown Recipient',
-        snippet: email.snippet || '',
-        date: email.date || new Date().toISOString(),
-        labelIds: email.labelIds || [],
-        messagesCount: email.messagesCount || 1
-      }));
+      results.forEach(({ category, emails, nextPageToken }) => {
+        emailsByCategory[category] = emails;
+        if (nextPageToken) {
+          tokensByCategory[category] = nextPageToken;
+        }
+      });
 
-      // Update cache
-      setCachedEmails(prev => ({
-        ...prev,
-        [currentView]: transformedEmails
-      }));
-
-      setEmails(transformedEmails);
-      setTotalEmails(data.resultsCount || transformedEmails.length);
-      setNextPageToken(data.nextPageToken);
-      setHasNextPage(!!data.nextPageToken);
-
+      setCategoryEmails(emailsByCategory);
+      setCategoryPageTokens(tokensByCategory);
+      
+      // Set initial category emails
+      setEmails(emailsByCategory[currentCategory] || []);
+      setNextPageToken(tokensByCategory[currentCategory] || null);
+      setHasNextPage(!!tokensByCategory[currentCategory]);
+      
+      setAllCategoriesLoaded(true);
     } catch (error) {
-      console.error('Error fetching emails:', error);
+      console.error('Error fetching all categories:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch emails');
     } finally {
       setLoading(false);
+      setIsInitialLoad(false);
     }
   };
 
   useEffect(() => {
-    if (status === 'authenticated' && session?.user?.email) {
-      fetchEmails();
+    if (status === 'authenticated' && isInitialLoad) {
+      fetchAllCategories();
     }
-  }, [session, status, currentView]);
+  }, [status, isInitialLoad]);
+
+  // Handle category changes without API calls
+  useEffect(() => {
+    if (allCategoriesLoaded && categoryEmails[currentCategory]) {
+      setEmails(categoryEmails[currentCategory]);
+      setNextPageToken(categoryPageTokens[currentCategory]);
+      setHasNextPage(!!categoryPageTokens[currentCategory]);
+    }
+  }, [currentCategory, allCategoriesLoaded]);
 
   const handlePageChange = async (direction: 'next' | 'prev') => {
     try {
       if (direction === 'next' && nextPageToken) {
         setPrevPageTokens(prev => [...prev, nextPageToken]);
-        await fetchEmails(nextPageToken);
+        await fetchAllCategories();
         setCurrentPage(prev => prev + 1);
       } else if (direction === 'prev' && currentPage > 1) {
         const newPrevTokens = [...prevPageTokens];
         const prevToken = newPrevTokens.pop();
         setPrevPageTokens(newPrevTokens);
         if (prevToken) {
-          await fetchEmails(prevToken);
+          await fetchAllCategories();
           setCurrentPage(prev => prev - 1);
         }
       }
@@ -226,6 +257,60 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
       });
   };
 
+  const markAsRead = async (emailId: string) => {
+    try {
+      // Update local state immediately
+      setEmails(prevEmails =>
+        prevEmails.map(email => {
+          if (email.id === emailId) {
+            return {
+              ...email,
+              labelIds: email.labelIds.filter(label => label !== 'UNREAD')
+            };
+          }
+          return email;
+        })
+      );
+
+      // Also update the cache
+      setCachedEmails(prev => ({
+        ...prev,
+        [currentView]: prev[currentView]?.map(email => {
+          if (email.id === emailId) {
+            return {
+              ...email,
+              labelIds: email.labelIds.filter(label => label !== 'UNREAD')
+            };
+          }
+          return email;
+        })
+      }));
+
+      // Make API call to update server
+      const response = await fetch('/api/emails/mark-read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.user?.email}`,
+        },
+        body: JSON.stringify({ messageId: emailId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to mark email as read');
+      }
+    } catch (error) {
+      console.error('Error marking email as read:', error);
+      // Optionally revert the state if the API call fails
+      await fetchAllCategories();
+    }
+  };
+
+  const filteredEmails = emails.filter(email => {
+    if (currentCategory === 'all') return true;
+    return email.labelIds.includes(currentCategory);
+  });
+
   if (status === 'loading' || loading) {
     return (
       <div className="h-full flex flex-col overflow-hidden bg-white">
@@ -267,18 +352,32 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-white">
+    <div className="h-full flex flex-col bg-white">
+      <div className="flex-shrink-0 border-b border-neutral-200">
+        <EmailCategories 
+          emails={emails}
+          onCategoryChange={(category) => {
+            setCurrentCategory(category);
+            setCurrentPage(1);
+            setPrevPageTokens([]);
+          }}
+          loading={isInitialLoad}
+          categoryEmails={categoryEmails}
+        />
+      </div>
+
       <div className="flex-1 overflow-y-auto">
-        {emails.length === 0 ? (
+        {filteredEmails.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-neutral-500">
             <p className="text-lg">
-              {currentView === 'inbox' && "No emails in your inbox"}
-              {currentView === 'starred' && "No starred emails"}
-              {currentView === 'sent' && "No sent emails"}
+              {currentCategory === 'all' 
+                ? "No emails found" 
+                : `No emails in ${currentCategory.replace('CATEGORY_', '').toLowerCase()}`
+              }
             </p>
           </div>
         ) : (
-          emails.map((email) => {
+          filteredEmails.map((email) => {
             console.log('Email thread:', email.subject, 'Count:', email.messagesCount);
             return (
               <div
@@ -292,14 +391,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
                   onEmailSelect(email);
                   // Mark as read when opening
                   if (email.labelIds.includes('UNREAD')) {
-                    fetch('/api/emails/mark-read', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${session?.user?.email}`,
-                      },
-                      body: JSON.stringify({ messageId: email.id }),
-                    });
+                    markAsRead(email.id);
                   }
                 }}
               >
@@ -365,7 +457,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
             Previous
           </button>
           <span className="text-sm text-neutral-600 font-medium">
-            Page {currentPage} • {totalEmails} emails
+            Page {currentPage} • {filteredEmails.length} emails
           </span>
           <button
             onClick={() => handlePageChange('next')}

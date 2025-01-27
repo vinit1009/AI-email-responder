@@ -30,11 +30,12 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const pageToken = searchParams.get('pageToken');
     const view = searchParams.get('view') || 'inbox';
+    const category = searchParams.get('category') || 'all';
 
     const oauth2Client = await getOAuth2Client(session.user.email);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Get the query based on the view
+    // Build the query based on view and category
     let query = '';
     switch (view) {
       case 'inbox':
@@ -50,10 +51,15 @@ export async function GET(request: Request) {
         query = 'in:inbox';
     }
 
-    // Set maxResults to 50
+    // Add category filter if not 'all'
+    if (category !== 'all') {
+      query += ` category:${category.replace('CATEGORY_', '').toLowerCase()}`;
+    }
+
+    // Set maxResults to 50 for each category
     const response = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 50, // Ensure we get 50 emails per page
+      maxResults: 50,
       pageToken: pageToken || undefined,
       q: query,
     });

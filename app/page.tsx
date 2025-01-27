@@ -19,8 +19,17 @@ interface Email {
 
 export default function Home() {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [currentView, setCurrentView] = useState<'inbox' | 'starred' | 'sent'>('inbox');
   
-  console.log('Selected email:', selectedEmail);
+  // Remove or comment out this useEffect since it's just for debugging
+  // useEffect(() => {
+  //   console.log('Selected email state changed:', selectedEmail);
+  // }, [selectedEmail]);
+
+  // Simplify the close handler
+  const closeEmail = () => {
+    setSelectedEmail(null);
+  };
 
   return (
     <div className="relative flex min-h-screen items-center justify-start bg-gradient-to-r from-white to-green-50">
@@ -95,12 +104,22 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Email Interface Container */}
       <div className="flex h-screen">
-        <EmailList onEmailSelect={(email: Email | null) => {
-          console.log('Email selected:', email);
-          setSelectedEmail(email);
-        }} />
-        {selectedEmail && <EmailView email={selectedEmail} />}
+        <div className={`w-[400px] ${selectedEmail ? 'border-r border-neutral-200' : ''}`}>
+          <EmailList 
+            currentView={currentView}
+            onEmailSelect={setSelectedEmail}
+          />
+        </div>
+
+        {selectedEmail && (
+          <div className="flex-1">
+            <EmailView 
+              email={selectedEmail} 
+            />
+          </div>
+        )}
       </div>
     </div>
   );

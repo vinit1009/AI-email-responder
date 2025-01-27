@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { format } from "date-fns";
 import DOMPurify from "dompurify";
 import { decode } from "html-entities"; // For decoding special HTML characters
 import { ComposeEmail } from "./compose-email";
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 
 interface EmailDetails {
   id: string;
@@ -22,10 +22,12 @@ interface EmailDetails {
 interface EmailViewProps {
   email: {
     id: string;
+    threadId: string;
     subject: string;
     sender: string;
     date: string;
-    threadId: string;
+    labelIds: string[];
+    messagesCount: number;
   };
 }
 
@@ -350,7 +352,7 @@ export function EmailView({ email }: EmailViewProps) {
               </span>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <button
               onClick={() => setShowReplyModal(true)}
               className="px-4 py-2 bg-black text-white rounded-lg hover:bg-neutral-800 
@@ -502,7 +504,10 @@ export function EmailView({ email }: EmailViewProps) {
           replyTo={{
             ...getReplyToDetails(threadEmails, session?.user?.email),
             threadId: email.threadId,
-            emails: threadEmails,
+            emails: threadEmails.map(email => ({
+              ...email,
+              userEmail: session?.user?.email
+            })),
           }}
           editable={true}
         />

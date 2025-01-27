@@ -10,14 +10,15 @@ interface ComposeEmailProps {
     to: string;
     subject: string;
     threadId?: string;
-    emails?: EmailDetails[];
+    emails?: any[];
   };
+  editable?: boolean;
 }
 
-export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
+export function ComposeEmail({ onClose, replyTo, editable = true }: ComposeEmailProps) {
   const { data: session } = useSession();
   const [to, setTo] = useState(replyTo?.to || '');
-  const [subject, setSubject] = useState(replyTo?.subject ? `Re: ${replyTo.subject}` : '');
+  const [subject, setSubject] = useState(replyTo?.subject || '');
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,45 +150,44 @@ export function ComposeEmail({ onClose, replyTo }: ComposeEmailProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
-        <div className="px-6 py-4 border-b border-neutral-200 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-neutral-900">
-            {replyTo ? 'Reply' : 'New Message'}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
-          >
-            <X className="h-5 w-5 text-neutral-500" />
-          </button>
+    <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl mx-4">
+        <div className="p-4 border-b border-neutral-200">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <label className="w-16 text-neutral-500">To:</label>
+              <input
+                type="email"
+                value={to}
+                onChange={(e) => editable && setTo(e.target.value)}
+                disabled={!editable}
+                className={`flex-1 p-2 rounded-lg ${
+                  editable 
+                    ? 'border border-neutral-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                    : 'bg-neutral-50'
+                }`}
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <label className="w-16 text-neutral-500">Subject:</label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => editable && setSubject(e.target.value)}
+                disabled={!editable}
+                className={`flex-1 p-2 rounded-lg ${
+                  editable 
+                    ? 'border border-neutral-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500' 
+                    : 'bg-neutral-50'
+                }`}
+              />
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
-            <div>
-              <input
-                type="email"
-                placeholder="To"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black
-                         text-neutral-900 placeholder:text-neutral-400"
-                disabled={!!replyTo}
-              />
-            </div>
-            <div>
-              <input
-                type="text"
-                placeholder="Subject"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black
-                         text-neutral-900 placeholder:text-neutral-400"
-              />
-            </div>
             <div className="space-y-2">
               <div className="flex gap-2 justify-end">
                 {replyTo && (

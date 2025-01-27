@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import DOMPurify from "dompurify";
 import { decode } from "html-entities"; // For decoding special HTML characters
 import { ComposeEmail } from "./compose-email";
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface EmailDetails {
   id: string;
@@ -28,12 +29,44 @@ interface EmailViewProps {
   };
 }
 
+const isCurrentUser = (email: string, currentUserEmail?: string | null) => {
+  return email.includes(currentUserEmail || '');
+};
+
+const getReplyToDetails = (threadEmails: EmailDetails[], currentUserEmail?: string | null) => {
+  // Sort emails by date to get the latest ones first
+  const sortedEmails = [...threadEmails].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  // Find the last email not from the current user
+  const lastExternalEmail = sortedEmails.find(email => {
+    const fromEmail = email.from.match(/<(.+)>/)?.[1] || email.from;
+    return !isCurrentUser(fromEmail, currentUserEmail);
+  });
+
+  if (!lastExternalEmail) {
+    return {
+      to: threadEmails[0].from,
+      from: currentUserEmail,
+      subject: threadEmails[0].subject.replace(/^(Re: )+/i, 'Re: '), // Normalize Re: prefix
+    };
+  }
+
+  return {
+    to: lastExternalEmail.from,
+    from: currentUserEmail,
+    subject: lastExternalEmail.subject.replace(/^(Re: )+/i, 'Re: '), // Normalize Re: prefix
+  };
+};
+
 export function EmailView({ email }: EmailViewProps) {
   const { data: session } = useSession();
   const [threadEmails, setThreadEmails] = useState<EmailDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showReplyModal, setShowReplyModal] = useState(false);
+  const [expandedEmails, setExpandedEmails] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!email?.threadId) {
@@ -252,6 +285,24 @@ export function EmailView({ email }: EmailViewProps) {
     );
   };
 
+  const toggleQuotedText = (emailId: string) => {
+    setExpandedEmails(prev => ({
+      ...prev,
+      [emailId]: !prev[emailId]
+    }));
+  };
+
+  const processEmailContent = (content: string) => {
+    // Split content into main message and quoted text
+    const parts = content.split(/(?=On .+wrote:)/);
+    if (parts.length === 1) return { mainContent: content, quotedContent: null };
+    
+    return {
+      mainContent: parts[0].trim(),
+      quotedContent: parts.slice(1).join('').trim()
+    };
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full bg-white">
@@ -287,9 +338,18 @@ export function EmailView({ email }: EmailViewProps) {
     <div className="h-full flex flex-col bg-white">
       <div className="px-8 py-6 border-b border-neutral-200">
         <div className="flex justify-between items-start mb-6">
-          <h1 className="text-xl font-semibold text-neutral-900 leading-tight">
-            {email.subject}
-          </h1>
+          <div className="flex items-start gap-3">
+            <h1 className="text-xl font-semibold text-neutral-900 leading-tight">
+              {email.subject}
+            </h1>
+            {threadEmails.length > 1 && (
+              <span className="inline-flex items-center justify-center px-2 py-0.5 
+                             text-xs font-medium bg-neutral-100 text-neutral-600 
+                             rounded-full min-w-[1.5rem]">
+                {threadEmails.length}
+              </span>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowReplyModal(true)}
@@ -332,43 +392,107 @@ export function EmailView({ email }: EmailViewProps) {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <div className="px-8 py-6 space-y-8">
-          {threadEmails.map((threadEmail, index) => (
-            <div 
-              key={threadEmail.id}
-              className={`${
-                index !== threadEmails.length - 1 
-                  ? 'border-b border-neutral-100 pb-8' 
-                  : ''
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="space-y-1">
-                  <div className="font-medium text-neutral-900">
-                    {threadEmail.from}
+        <div className="px-8 py-6 space-y-12">
+          {threadEmails.map((threadEmail, index) => {
+            const fromEmail = threadEmail.from.match(/<(.+)>/)?.[1] || threadEmail.from;
+            const isFromMe = isCurrentUser(fromEmail, session?.user?.email);
+
+            return (
+              <div 
+                key={threadEmail.id}
+                className={`${
+                  index !== threadEmails.length - 1 
+                    ? 'border-b border-neutral-100 pb-8' 
+                    : ''
+                }`}
+              >
+                <div className={`rounded-lg ${
+                  isFromMe 
+                    ? 'bg-blue-50/50 border border-blue-100' 
+                    : 'bg-white border border-neutral-200'
+                } p-6`}>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="space-y-1">
+                      <div className={`font-medium ${isFromMe ? 'text-blue-600' : 'text-neutral-900'}`}>
+                        {isFromMe ? (
+                          <>
+                            <span className="flex items-center gap-2">
+                              You <span className="text-sm text-neutral-500 font-normal">(sent)</span>
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-lg">{threadEmail.from}</span>
+                        )}
+                      </div>
+                      <div className="text-sm text-neutral-500">
+                        To: {threadEmail.to}
+                      </div>
+                    </div>
+                    <div className="text-sm text-neutral-500 tabular-nums">
+                      {formatDate(threadEmail.date)}
+                    </div>
                   </div>
-                  <div className="text-sm text-neutral-500">
-                    To: {threadEmail.to}
+
+                  <div
+                    className={`prose max-w-none
+                      ${isFromMe 
+                        ? 'pl-4 border-l-2 border-blue-200' 
+                        : 'pl-4 border-l-4 border-neutral-300 bg-neutral-50 p-4 rounded'
+                      }
+                      prose-p:text-neutral-700 prose-p:leading-relaxed
+                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                      prose-blockquote:border-l-neutral-300 prose-blockquote:text-neutral-600
+                      prose-strong:text-neutral-900
+                      ${isFromMe ? 'text-sm' : 'text-base'}
+                      prose-pre:bg-neutral-50 prose-pre:text-neutral-800`}
+                  >
+                    {(() => {
+                      const { mainContent, quotedContent } = processEmailContent(threadEmail.body);
+                      const isExpanded = expandedEmails[threadEmail.id];
+
+                      return (
+                        <div>
+                          <div dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(mainContent),
+                          }} />
+                          
+                          {quotedContent && (
+                            <div className="mt-4">
+                              <button
+                                onClick={() => toggleQuotedText(threadEmail.id)}
+                                className="flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 transition-colors"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="w-4 h-4" />
+                                    Hide quoted text
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-4 h-4" />
+                                    Show quoted text
+                                  </>
+                                )}
+                              </button>
+                              
+                              {isExpanded && (
+                                <div 
+                                  className="mt-2 pl-4 border-l-2 border-neutral-200 text-neutral-600 text-sm"
+                                  dangerouslySetInnerHTML={{
+                                    __html: DOMPurify.sanitize(quotedContent),
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
-                </div>
-                <div className="text-sm text-neutral-500 tabular-nums">
-                  {formatDate(threadEmail.date)}
                 </div>
               </div>
-
-              <div
-                className="prose max-w-none prose-neutral
-                         prose-p:text-neutral-600 prose-p:leading-relaxed
-                         prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-                         prose-blockquote:border-l-neutral-200 prose-blockquote:text-neutral-500
-                         prose-strong:text-neutral-900
-                         prose-pre:bg-neutral-50 prose-pre:text-neutral-800"
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(threadEmail.body),
-                }}
-              />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -376,11 +500,11 @@ export function EmailView({ email }: EmailViewProps) {
         <ComposeEmail
           onClose={() => setShowReplyModal(false)}
           replyTo={{
-            to: threadEmails[0]?.from || email.sender,
-            subject: email.subject,
+            ...getReplyToDetails(threadEmails, session?.user?.email),
             threadId: email.threadId,
             emails: threadEmails,
           }}
+          editable={true}
         />
       )}
     </div>

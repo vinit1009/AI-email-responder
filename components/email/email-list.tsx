@@ -53,7 +53,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [totalEmails, setTotalEmails] = useState(0);
   const [cachedEmails, setCachedEmails] = useState<Record<string, Email[]>>({});
-  const [currentCategory, setCurrentCategory] = useState('all');
+  const [currentCategory, setCurrentCategory] = useState('CATEGORY_PERSONAL');
   const [categoryPageTokens, setCategoryPageTokens] = useState<Record<string, string>>({});
   const [categoryEmails, setCategoryEmails] = useState<Record<string, Email[]>>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -119,10 +119,10 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
       setCategoryEmails(emailsByCategory);
       setCategoryPageTokens(tokensByCategory);
       
-      // Set initial category emails
-      setEmails(emailsByCategory[currentCategory] || []);
-      setNextPageToken(tokensByCategory[currentCategory] || null);
-      setHasNextPage(!!tokensByCategory[currentCategory]);
+      // Set initial category emails to Personal
+      setEmails(emailsByCategory['CATEGORY_PERSONAL'] || []);
+      setNextPageToken(tokensByCategory['CATEGORY_PERSONAL'] || null);
+      setHasNextPage(!!tokensByCategory['CATEGORY_PERSONAL']);
       
       setAllCategoriesLoaded(true);
     } catch (error) {
@@ -259,9 +259,9 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
 
   const markAsRead = async (emailId: string) => {
     try {
-      // Update local state immediately
-      setEmails(prevEmails =>
-        prevEmails.map(email => {
+      // Update local state immediately across all categories
+      const updateEmailInCategory = (emails: Email[]) => 
+        emails.map(email => {
           if (email.id === emailId) {
             return {
               ...email,
@@ -269,22 +269,21 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
             };
           }
           return email;
-        })
-      );
+        });
 
-      // Also update the cache
-      setCachedEmails(prev => ({
-        ...prev,
-        [currentView]: prev[currentView]?.map(email => {
-          if (email.id === emailId) {
-            return {
-              ...email,
-              labelIds: email.labelIds.filter(label => label !== 'UNREAD')
-            };
+      // Update current emails list
+      setEmails(prevEmails => updateEmailInCategory(prevEmails));
+
+      // Update all category caches
+      setCategoryEmails(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(category => {
+          if (updated[category]) {
+            updated[category] = updateEmailInCategory(updated[category]);
           }
-          return email;
-        })
-      }));
+        });
+        return updated;
+      });
 
       // Make API call to update server
       const response = await fetch('/api/emails/mark-read', {
@@ -299,10 +298,18 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
       if (!response.ok) {
         throw new Error('Failed to mark email as read');
       }
+
+      // Verify the update was successful
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error('Server indicated unsuccessful update');
+      }
+
     } catch (error) {
       console.error('Error marking email as read:', error);
-      // Optionally revert the state if the API call fails
+      // Revert local state changes and refresh data
       await fetchAllCategories();
+      // Optionally show an error toast/notification
     }
   };
 

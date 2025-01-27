@@ -37,14 +37,9 @@ export function EmailCategories({
   onCategoryChange, 
   loading = false,
 }: EmailCategoriesProps) {
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState('CATEGORY_PERSONAL');
 
   const categories = [
-    {
-      id: 'all',
-      label: 'All',
-      icon: <Mail className="w-4 h-4" />,
-    },
     {
       id: 'CATEGORY_PERSONAL',
       label: 'Personal',
@@ -64,6 +59,11 @@ export function EmailCategories({
       id: 'CATEGORY_SOCIAL',
       label: 'Social',
       icon: <Users className="w-4 h-4" />,
+    },
+    {
+      id: 'all',
+      label: 'All Mail',
+      icon: <Mail className="w-4 h-4" />,
     },
   ];
 

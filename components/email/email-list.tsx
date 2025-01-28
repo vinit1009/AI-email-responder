@@ -229,6 +229,11 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
       setLoading(true);
       setEmails([]);
       setSelectedEmails(new Set());
+      setCategoryEmails({}); // Clear category emails
+      setCurrentCategory('all'); // Reset category
+      setPrevPageTokens([]); // Reset pagination
+      setNextPageToken(null);
+      setCurrentPage(1);
       
       const loadEmails = async () => {
         try {
@@ -236,6 +241,9 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
             await fetchTrash();
           } else if (currentView === 'starred') {
             await fetchStarredEmails();
+          } else if (currentView === 'inbox') {
+            setCurrentCategory('CATEGORY_PERSONAL'); // Set default category for inbox
+            await fetchAllCategories();
           } else {
             await fetchAllCategories();
           }
@@ -248,16 +256,16 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
     }
   }, [status, currentView, fetchTrash, fetchStarredEmails, fetchAllCategories]);
 
-  // Update the useEffect for category changes
+  // Update category change effect
   useEffect(() => {
-    if (allCategoriesLoaded && categoryEmails[currentCategory]) {
+    if (currentView === 'inbox' && allCategoriesLoaded && categoryEmails[currentCategory]) {
       setEmails(categoryEmails[currentCategory]);
       setNextPageToken(categoryPageTokens[currentCategory]);
       setHasNextPage(!!categoryPageTokens[currentCategory]);
-      setCurrentPage(1); // Reset page number when changing categories
-      setPrevPageTokens([]); // Reset pagination tokens
+      setCurrentPage(1);
+      setPrevPageTokens([]);
     }
-  }, [currentCategory, allCategoriesLoaded, categoryEmails, categoryPageTokens]);
+  }, [currentCategory, allCategoriesLoaded, categoryEmails, categoryPageTokens, currentView]);
 
   // Add an effect to handle initial loading state
   useEffect(() => {

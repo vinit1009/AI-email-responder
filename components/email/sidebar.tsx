@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from 'react';
-import { Star, Inbox, SendHorizontal, PenSquare } from 'lucide-react';
+import { Star, Inbox, SendHorizontal, PenSquare, Trash2 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { ComposeEmail } from './compose-email';
 
 interface SidebarProps {
-  currentView: 'inbox' | 'starred' | 'sent';
-  onViewChange: (view: 'inbox' | 'starred' | 'sent') => void;
+  currentView: 'inbox' | 'starred' | 'sent' | 'trash';
+  onViewChange: (view: 'inbox' | 'starred' | 'sent' | 'trash') => void;
 }
 
 export function EmailSidebar({ currentView, onViewChange }: SidebarProps) {
@@ -29,6 +29,11 @@ export function EmailSidebar({ currentView, onViewChange }: SidebarProps) {
       id: 'starred',
       label: 'Starred',
       icon: Star,
+    },
+    {
+      id: 'trash',
+      label: 'Trash',
+      icon: Trash2,
     },
   ] as const;
 

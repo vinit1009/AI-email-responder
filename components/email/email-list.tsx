@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSession, signIn } from 'next-auth/react';
 import { format } from "date-fns";
-import { Star, Loader2 } from 'lucide-react';
+import { Star, Loader2, RefreshCcw, Check, Square, CheckSquare, Trash, Archive, Mail, MoreHorizontal } from 'lucide-react';
 import { decode } from 'html-entities';
 import { EmailCategories } from './email-categories';
 
@@ -20,7 +20,7 @@ interface Email {
 }
 
 interface EmailListProps {
-  currentView: 'inbox' | 'starred' | 'sent';
+  currentView: 'inbox' | 'starred' | 'sent' | 'trash';
   onEmailSelect: (email: Email | null) => void;
 }
 
@@ -59,6 +59,9 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allCategoriesLoaded, setAllCategoriesLoaded] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(false);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectMode, setSelectMode] = useState<'none' | 'all' | 'read' | 'unread'>('none');
 
   const categories = [
     'all',
@@ -68,7 +71,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
     'CATEGORY_SOCIAL'
   ];
 
-  const fetchAllCategories = async () => {
+  const fetchAllCategories = useCallback(async () => {
     try {
       setLoading(true);
       const emailsByCategory: Record<string, Email[]> = {};
@@ -135,13 +138,115 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
       setLoading(false);
       setIsInitialLoad(false);
     }
-  };
+  }, [session?.user?.email, currentView]);
+
+  const fetchTrash = useCallback(async () => {
+    try {
+      setLoading(true);
+      const url = new URL('/api/emails', window.location.origin);
+      url.searchParams.set('view', 'trash');
+      
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${session?.user?.email}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!data.emails || !Array.isArray(data.emails)) {
+        throw new Error('Invalid emails data received');
+      }
+
+      const formattedEmails = data.emails.map((email: any) => ({
+        id: email.id || email.messageId,
+        threadId: email.threadId || email.id,
+        subject: email.subject || '(No Subject)',
+        sender: email.sender || email.from || 'Unknown Sender',
+        recipient: email.recipient || email.to || 'Unknown Recipient',
+        snippet: email.snippet || '',
+        date: email.date || new Date().toISOString(),
+        labelIds: email.labelIds || [],
+        messagesCount: email.messagesCount || 1
+      }));
+
+      setEmails(formattedEmails);
+      setNextPageToken(data.nextPageToken);
+      setHasNextPage(!!data.nextPageToken);
+      // Hide categories in trash view
+      setCurrentCategory('all');
+    } catch (error) {
+      console.error('Error fetching trash:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch trash');
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.user?.email]);
+
+  const fetchStarredEmails = useCallback(async () => {
+    try {
+      setLoading(true);
+      const url = new URL('/api/emails', window.location.origin);
+      url.searchParams.set('view', 'starred');
+      
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${session?.user?.email}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!data.emails || !Array.isArray(data.emails)) {
+        throw new Error('Invalid emails data received');
+      }
+
+      const formattedEmails = data.emails.map((email: any) => ({
+        id: email.id || email.messageId,
+        threadId: email.threadId || email.id,
+        subject: email.subject || '(No Subject)',
+        sender: email.sender || email.from || 'Unknown Sender',
+        recipient: email.recipient || email.to || 'Unknown Recipient',
+        snippet: email.snippet || '',
+        date: email.date || new Date().toISOString(),
+        labelIds: email.labelIds || [],
+        messagesCount: email.messagesCount || 1
+      }));
+
+      setEmails(formattedEmails);
+      setNextPageToken(data.nextPageToken);
+      setHasNextPage(!!data.nextPageToken);
+      // Hide categories in starred view
+      setCurrentCategory('all');
+    } catch (error) {
+      console.error('Error fetching starred emails:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch starred emails');
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.user?.email]);
 
   useEffect(() => {
-    if (status === 'authenticated' && isInitialLoad) {
-      fetchAllCategories();
+    if (status === 'authenticated') {
+      setLoading(true);
+      setEmails([]);
+      setSelectedEmails(new Set());
+      
+      const loadEmails = async () => {
+        try {
+          if (currentView === 'trash') {
+            await fetchTrash();
+          } else if (currentView === 'starred') {
+            await fetchStarredEmails();
+          } else {
+            await fetchAllCategories();
+          }
+        } catch (error) {
+          console.error('Error loading emails:', error);
+        }
+      };
+
+      loadEmails();
     }
-  }, [status, isInitialLoad]);
+  }, [status, currentView, fetchTrash, fetchStarredEmails, fetchAllCategories]);
 
   // Update the useEffect for category changes
   useEffect(() => {
@@ -422,6 +527,151 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
     return email.labelIds.includes(currentCategory);
   });
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchAllCategories();
+    setIsRefreshing(false);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedEmails.size === emails.length) {
+      setSelectedEmails(new Set());
+      setSelectMode('none');
+    } else {
+      setSelectedEmails(new Set(emails.map(email => email.id)));
+      setSelectMode('all');
+    }
+  };
+
+  const handleEmailSelect = (emailId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedEmails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(emailId)) {
+        newSet.delete(emailId);
+      } else {
+        newSet.add(emailId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleBulkAction = async (action: 'delete' | 'archive' | 'markRead' | 'markUnread') => {
+    if (selectedEmails.size === 0) return;
+
+    try {
+      const messageIds = Array.from(selectedEmails);
+
+      switch (action) {
+        case 'delete':
+          // Update local state first for immediate feedback
+          const emailsAfterDelete = emails.filter(email => !selectedEmails.has(email.id));
+          setEmails(emailsAfterDelete);
+
+          // Update category emails state
+          setCategoryEmails(prev => ({
+            ...prev,
+            [currentCategory]: prev[currentCategory].filter(
+              email => !selectedEmails.has(email.id)
+            )
+          }));
+
+          // Clear selection
+          setSelectedEmails(new Set());
+
+          // Send request to server
+          try {
+            const response = await fetch('/api/emails/delete', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${session?.user?.email}`,
+              },
+              body: JSON.stringify({ messageIds }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to delete emails');
+            }
+          } catch (error) {
+            console.error('Error deleting emails on server:', error);
+            // Revert local state on error
+            setEmails(emails);
+            setCategoryEmails(prev => ({
+              ...prev,
+              [currentCategory]: prev[currentCategory]
+            }));
+          }
+          break;
+
+        case 'markRead':
+        case 'markUnread':
+          // Update local state first for immediate feedback
+          const emailsAfterMarkingReadStatus = emails.map(email => {
+            if (selectedEmails.has(email.id)) {
+              return {
+                ...email,
+                labelIds: action === 'markRead'
+                  ? email.labelIds.filter(id => id !== 'UNREAD')
+                  : [...new Set([...email.labelIds, 'UNREAD'])]
+              };
+            }
+            return email;
+          });
+          setEmails(emailsAfterMarkingReadStatus);
+
+          // Update category emails state
+          setCategoryEmails(prev => ({
+            ...prev,
+            [currentCategory]: prev[currentCategory].map(email => {
+              if (selectedEmails.has(email.id)) {
+                return {
+                  ...email,
+                  labelIds: action === 'markRead'
+                    ? email.labelIds.filter(id => id !== 'UNREAD')
+                    : [...new Set([...email.labelIds, 'UNREAD'])]
+                };
+              }
+              return email;
+            })
+          }));
+
+          // Clear selection immediately for better UX
+          setSelectedEmails(new Set());
+
+          // Send request to server
+          try {
+            const response = await fetch('/api/emails/mark-read-bulk', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${session?.user?.email}`,
+              },
+              body: JSON.stringify({
+                messageIds,
+                markAsRead: action === 'markRead',
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to modify emails');
+            }
+          } catch (error) {
+            console.error('Error updating emails on server:', error);
+            // Revert local state on error
+            setEmails(emails);
+            setCategoryEmails(prev => ({
+              ...prev,
+              [currentCategory]: prev[currentCategory]
+            }));
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Error performing bulk action:', error);
+    }
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="h-full flex flex-col overflow-hidden bg-white">
@@ -464,17 +714,91 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
 
   return (
     <div className="h-full flex flex-col bg-white">
-      <div className="flex-shrink-0 border-b border-neutral-200">
-        <EmailCategories 
-          emails={emails}
-          onCategoryChange={(category) => {
-            setCurrentCategory(category);
-            setCurrentPage(1);
-            setPrevPageTokens([]);
-          }}
-          loading={isInitialLoad}
-          categoryEmails={categoryEmails}
-        />
+      {/* Only show categories in inbox view */}
+      {currentView === 'inbox' && (
+        <div className="flex-shrink-0 border-b border-neutral-200">
+          <EmailCategories 
+            emails={emails}
+            onCategoryChange={(category) => {
+              setCurrentCategory(category);
+              setCurrentPage(1);
+              setPrevPageTokens([]);
+              setSelectedEmails(new Set());
+            }}
+            loading={isInitialLoad}
+            categoryEmails={categoryEmails}
+          />
+        </div>
+      )}
+
+      {/* Selection controls below categories */}
+      <div className="flex-shrink-0 border-b border-neutral-200 bg-white">
+        <div className="flex items-center px-4 py-2 gap-2">
+          <div className="flex items-center gap-2 pr-4 border-r border-neutral-200">
+            <button
+              onClick={handleSelectAll}
+              className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
+              title={selectedEmails.size === emails.length ? "Deselect all" : "Select all"}
+            >
+              {selectedEmails.size === emails.length ? (
+                <CheckSquare className="w-5 h-5 text-neutral-700" />
+              ) : (
+                <Square className="w-5 h-5 text-neutral-500" />
+              )}
+            </button>
+          </div>
+
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className={`p-2 hover:bg-neutral-100 rounded-full transition-colors ${
+              isRefreshing ? 'animate-spin' : ''
+            }`}
+            title="Refresh"
+          >
+            <RefreshCcw className="w-5 h-5 text-neutral-500" />
+          </button>
+
+          {selectedEmails.size > 0 && (
+            <>
+              <button
+                onClick={() => handleBulkAction('archive')}
+                className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
+                title="Archive"
+              >
+                <Archive className="w-5 h-5 text-neutral-500" />
+              </button>
+              
+              <button
+                onClick={() => handleBulkAction('delete')}
+                className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
+                title="Delete"
+              >
+                <Trash className="w-5 h-5 text-neutral-500" />
+              </button>
+
+              <button
+                onClick={() => handleBulkAction('markRead')}
+                className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
+                title="Mark as read"
+              >
+                <Mail className="w-5 h-5 text-neutral-500" />
+              </button>
+
+              <button
+                onClick={() => handleBulkAction('markUnread')}
+                className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
+                title="Mark as unread"
+              >
+                <Mail className="w-5 h-5 text-neutral-500 fill-neutral-500" />
+              </button>
+
+              <div className="text-sm text-neutral-600 ml-2">
+                {selectedEmails.size} selected
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -493,62 +817,72 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
             return (
               <div
                 key={email.id}
-                className="group px-6 py-4 border-b border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-all duration-200"
+                className="group px-6 py-4 border-b border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-all duration-200 flex items-center gap-4"
                 onClick={() => {
                   if (!email.threadId) {
                     console.error('No threadId for email:', email);
                     return;
                   }
                   onEmailSelect(email);
-                  // Mark as read when opening
                   if (email.labelIds.includes('UNREAD')) {
                     markAsRead(email.id);
                   }
                 }}
               >
-                <div className="flex items-start space-x-4">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => handleEmailSelect(email.id, e)}
+                    className="p-2 hover:bg-neutral-100 rounded transition-colors"
+                  >
+                    {selectedEmails.has(email.id) ? (
+                      <CheckSquare className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-neutral-400 group-hover:text-neutral-500" />
+                    )}
+                  </button>
+                  
                   <button
                     onClick={(e) => toggleStar(e, email.id)}
-                    className="mt-1 p-1 rounded-full hover:bg-neutral-100 transition-colors duration-200"
+                    className="p-2 hover:bg-neutral-100 rounded-full transition-colors"
                   >
                     <Star
-                      className={`h-5 w-5 transition-colors duration-200 ${
+                      className={`w-4 h-4 ${
                         email.labelIds.includes('STARRED')
                           ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-neutral-400 group-hover:text-neutral-600'
+                          : 'text-neutral-400 group-hover:text-neutral-500'
                       }`}
                     />
                   </button>
+                </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className={`truncate mr-4 text-neutral-900 ${
-                        email.labelIds.includes('UNREAD') ? 'font-bold' : 'font-medium'
-                      }`}>
-                        {email.subject}
-                        {email.messagesCount > 1 && (
-                          <span className="inline-flex items-center justify-center px-2 py-0.5 
-                                         text-xs font-medium bg-neutral-100 text-neutral-600 
-                                         rounded-full min-w-[1.5rem] ml-2">
-                            {email.messagesCount}
-                          </span>
-                        )}
-                      </h3>
-                      <span className="text-sm text-neutral-500 flex-shrink-0 font-medium">
-                        {formatDate(email.date)}
-                      </span>
-                    </div>
-                    <p className={`text-sm truncate mb-1 ${
-                      email.labelIds.includes('UNREAD')
-                        ? 'text-neutral-800 font-medium'
-                        : 'text-neutral-600'
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className={`truncate mr-4 text-neutral-900 ${
+                      email.labelIds.includes('UNREAD') ? 'font-bold' : 'font-medium'
                     }`}>
-                      {getEmailDisplay(email).primary}
-                    </p>
-                    <p className="text-sm text-neutral-500 truncate leading-relaxed">
-                      {formatEmailContent(email.snippet)}
-                    </p>
+                      {email.subject}
+                      {email.messagesCount > 1 && (
+                        <span className="inline-flex items-center justify-center px-2 py-0.5 
+                                       text-xs font-medium bg-neutral-100 text-neutral-600 
+                                       rounded-full min-w-[1.5rem] ml-2">
+                          {email.messagesCount}
+                        </span>
+                      )}
+                    </h3>
+                    <span className="text-sm text-neutral-500 flex-shrink-0 font-medium">
+                      {formatDate(email.date)}
+                    </span>
                   </div>
+                  <p className={`text-sm truncate mb-1 ${
+                    email.labelIds.includes('UNREAD')
+                      ? 'text-neutral-800 font-medium'
+                      : 'text-neutral-600'
+                  }`}>
+                    {getEmailDisplay(email).primary}
+                  </p>
+                  <p className="text-sm text-neutral-500 truncate leading-relaxed">
+                    {formatEmailContent(email.snippet)}
+                  </p>
                 </div>
               </div>
             );

@@ -34,12 +34,15 @@ function buildQuery(view: string, category: string): string {
     case 'sent':
       query = 'in:sent';
       break;
+    case 'trash':
+      query = 'in:trash';
+      break;
     default:
       query = 'in:inbox';
   }
 
-  // Add category filter if not 'all'
-  if (category && category !== 'all') {
+  // Add category filter only for inbox view
+  if (view === 'inbox' && category && category !== 'all') {
     const categoryName = category.replace('CATEGORY_', '').toLowerCase();
     query += ` category:${categoryName}`;
   }

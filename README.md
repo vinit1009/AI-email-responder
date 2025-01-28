@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## 🔒 Authentication
 
-First, run the development server:
+The application uses NextAuth.js with Google OAuth2 for secure authentication. Users can:
+- Sign in with their Google account
+- Access their Gmail inbox
+- Maintain secure sessions
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🎨 UI/UX Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Responsive Design**: Works seamlessly on desktop and mobile
+- **Modern Interface**: Clean, minimalist design
+- **Intuitive Navigation**: Easy access to all features
+- **Loading States**: Smooth loading transitions
+- **Error Handling**: User-friendly error messages
+- **Accessibility**: WCAG compliance (in progress)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🔄 API Integration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Gmail API
+- Email fetching and sending
+- Label management
+- Thread handling
+- Attachment support
 
-## Learn More
+### Future API Integrations
+- E-commerce platforms (Shopify, WooCommerce, etc.)
+- CRM systems
+- Payment processors
+- Shipping providers
 
-To learn more about Next.js, take a look at the following resources:
+## 🛣 Roadmap
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Phase 1** (Current)
+   - ✅ Gmail integration
+   - ✅ Basic AI responses
+   - ✅ Email organization
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2. **Phase 2**
+   - 🔄 E-commerce integration
+   - 🔄 Customer service automation
+   - 🔄 Advanced AI training
 
-## Deploy on Vercel
+3. **Phase 3**
+   - 📋 Analytics dashboard
+   - 📋 Multi-channel support
+   - 📋 Custom workflows
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🤝 Contributing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+We welcome contributions! 
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Gmail API Documentation
+- Next.js Team
+- Google
+- All contributors
+
+## 📞 Support
+
+Need help? Contact us at:
+- Email: vinitshah100@gmail.com

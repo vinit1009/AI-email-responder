@@ -58,6 +58,7 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const [categoryEmails, setCategoryEmails] = useState<Record<string, Email[]>>({});
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allCategoriesLoaded, setAllCategoriesLoaded] = useState(false);
+  const [isPageLoading, setIsPageLoading] = useState(false);
 
   const categories = [
     'all',
@@ -70,25 +71,29 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
   const fetchAllCategories = async () => {
     try {
       setLoading(true);
-      const fetchPromises = categories.map(async (category) => {
+      const emailsByCategory: Record<string, Email[]> = {};
+      const tokensByCategory: Record<string, string> = {};
+      
+      // Fetch one category at a time with delay
+      for (const category of categories) {
         const url = new URL('/api/emails', window.location.origin);
         url.searchParams.set('view', currentView);
         url.searchParams.set('category', category);
         
-        const response = await fetch(url.toString(), {
-          headers: {
-            'Authorization': `Bearer ${session?.user?.email}`,
-          },
-        });
+        try {
+          const response = await fetch(url.toString(), {
+            headers: {
+              'Authorization': `Bearer ${session?.user?.email}`,
+            },
+          });
 
-        const data = await response.json();
-        if (!data.emails || !Array.isArray(data.emails)) {
-          throw new Error('Invalid emails data received');
-        }
+          const data = await response.json();
+          if (!data.emails || !Array.isArray(data.emails)) {
+            throw new Error('Invalid emails data received');
+          }
 
-        return {
-          category,
-          emails: data.emails.map((email: any) => ({
+          // Store in temporary object first
+          emailsByCategory[category] = data.emails.map((email: any) => ({
             id: email.id || email.messageId,
             threadId: email.threadId || email.id,
             subject: email.subject || '(No Subject)',
@@ -98,35 +103,33 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
             date: email.date || new Date().toISOString(),
             labelIds: email.labelIds || [],
             messagesCount: email.messagesCount || 1
-          })),
-          nextPageToken: data.nextPageToken
-        };
-      });
+          }));
 
-      const results = await Promise.all(fetchPromises);
+          if (data.nextPageToken) {
+            tokensByCategory[category] = data.nextPageToken;
+          }
 
-      // Store all emails by category
-      const emailsByCategory: Record<string, Email[]> = {};
-      const tokensByCategory: Record<string, string> = {};
-
-      results.forEach(({ category, emails, nextPageToken }) => {
-        emailsByCategory[category] = emails;
-        if (nextPageToken) {
-          tokensByCategory[category] = nextPageToken;
+          // Add delay between requests to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error(`Error fetching ${category}:`, error);
         }
-      });
+      }
 
+      // Update all state at once after all fetches are complete
       setCategoryEmails(emailsByCategory);
       setCategoryPageTokens(tokensByCategory);
-      
+
       // Set initial category emails to Personal
-      setEmails(emailsByCategory['CATEGORY_PERSONAL'] || []);
-      setNextPageToken(tokensByCategory['CATEGORY_PERSONAL'] || null);
-      setHasNextPage(!!tokensByCategory['CATEGORY_PERSONAL']);
+      if (emailsByCategory['CATEGORY_PERSONAL']) {
+        setEmails(emailsByCategory['CATEGORY_PERSONAL']);
+        setNextPageToken(tokensByCategory['CATEGORY_PERSONAL'] || null);
+        setHasNextPage(!!tokensByCategory['CATEGORY_PERSONAL']);
+      }
       
       setAllCategoriesLoaded(true);
     } catch (error) {
-      console.error('Error fetching all categories:', error);
+      console.error('Error fetching categories:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch emails');
     } finally {
       setLoading(false);
@@ -140,32 +143,133 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
     }
   }, [status, isInitialLoad]);
 
-  // Handle category changes without API calls
+  // Update the useEffect for category changes
   useEffect(() => {
     if (allCategoriesLoaded && categoryEmails[currentCategory]) {
       setEmails(categoryEmails[currentCategory]);
       setNextPageToken(categoryPageTokens[currentCategory]);
       setHasNextPage(!!categoryPageTokens[currentCategory]);
+      setCurrentPage(1); // Reset page number when changing categories
+      setPrevPageTokens([]); // Reset pagination tokens
     }
-  }, [currentCategory, allCategoriesLoaded]);
+  }, [currentCategory, allCategoriesLoaded, categoryEmails, categoryPageTokens]);
+
+  // Add an effect to handle initial loading state
+  useEffect(() => {
+    if (!loading && categoryEmails['CATEGORY_PERSONAL']?.length === 0) {
+      setEmails([]);
+    }
+  }, [loading, categoryEmails]);
 
   const handlePageChange = async (direction: 'next' | 'prev') => {
     try {
+      setIsPageLoading(true);
+      
       if (direction === 'next' && nextPageToken) {
+        // Store current page's emails before moving to next
+        setCachedEmails(prev => ({
+          ...prev,
+          [currentPage]: emails
+        }));
+        
         setPrevPageTokens(prev => [...prev, nextPageToken]);
-        await fetchAllCategories();
+        
+        // Fetch next page
+        const url = new URL('/api/emails', window.location.origin);
+        url.searchParams.set('view', currentView);
+        url.searchParams.set('category', currentCategory);
+        url.searchParams.set('pageToken', nextPageToken);
+        
+        const response = await fetch(url.toString(), {
+          headers: {
+            'Authorization': `Bearer ${session?.user?.email}`,
+          },
+        });
+
+        const data = await response.json();
+        if (!data.emails || !Array.isArray(data.emails)) {
+          throw new Error('Invalid emails data received');
+        }
+
+        const newEmails = data.emails.map((email: any) => ({
+          id: email.id || email.messageId,
+          threadId: email.threadId || email.id,
+          subject: email.subject || '(No Subject)',
+          sender: email.sender || email.from || 'Unknown Sender',
+          recipient: email.recipient || email.to || 'Unknown Recipient',
+          snippet: email.snippet || '',
+          date: email.date || new Date().toISOString(),
+          labelIds: email.labelIds || [],
+          messagesCount: email.messagesCount || 1
+        }));
+
+        // Update current view
+        setEmails(newEmails);
+        setNextPageToken(data.nextPageToken);
+        setHasNextPage(!!data.nextPageToken);
         setCurrentPage(prev => prev + 1);
+
       } else if (direction === 'prev' && currentPage > 1) {
-        const newPrevTokens = [...prevPageTokens];
-        const prevToken = newPrevTokens.pop();
-        setPrevPageTokens(newPrevTokens);
-        if (prevToken) {
-          await fetchAllCategories();
+        // Get previous page's emails from cache
+        const previousEmails = cachedEmails[currentPage - 1];
+        
+        if (previousEmails) {
+          // If we have the previous page cached, use it
+          setEmails(previousEmails);
           setCurrentPage(prev => prev - 1);
+          
+          // Update next page token
+          const newPrevTokens = [...prevPageTokens];
+          const currentToken = newPrevTokens.pop();
+          setPrevPageTokens(newPrevTokens);
+          setNextPageToken(currentToken || null);
+          setHasNextPage(true);
+        } else {
+          // If not cached, fetch the previous page
+          const newPrevTokens = [...prevPageTokens];
+          const prevToken = newPrevTokens[newPrevTokens.length - 2]; // Get second to last token
+          
+          const url = new URL('/api/emails', window.location.origin);
+          url.searchParams.set('view', currentView);
+          url.searchParams.set('category', currentCategory);
+          url.searchParams.set('pageToken', prevToken || '');
+          
+          const response = await fetch(url.toString(), {
+            headers: {
+              'Authorization': `Bearer ${session?.user?.email}`,
+            },
+          });
+
+          const data = await response.json();
+          if (!data.emails || !Array.isArray(data.emails)) {
+            throw new Error('Invalid emails data received');
+          }
+
+          const previousEmails = data.emails.map((email: any) => ({
+            id: email.id || email.messageId,
+            threadId: email.threadId || email.id,
+            subject: email.subject || '(No Subject)',
+            sender: email.sender || email.from || 'Unknown Sender',
+            recipient: email.recipient || email.to || 'Unknown Recipient',
+            snippet: email.snippet || '',
+            date: email.date || new Date().toISOString(),
+            labelIds: email.labelIds || [],
+            messagesCount: email.messagesCount || 1
+          }));
+
+          // Update state
+          setEmails(previousEmails);
+          setPrevPageTokens(newPrevTokens.slice(0, -1));
+          setNextPageToken(newPrevTokens[newPrevTokens.length - 1] || null);
+          setCurrentPage(prev => prev - 1);
+          setHasNextPage(true);
         }
       }
     } catch (error) {
+      console.error('Error changing page:', error);
       setError(error instanceof Error ? error.message : 'Failed to change page');
+    } finally {
+      setIsPageLoading(false);
     }
   };
 
@@ -456,24 +560,42 @@ export function EmailList({ currentView, onEmailSelect }: EmailListProps) {
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <button
             onClick={() => handlePageChange('prev')}
-            disabled={currentPage === 1 || loading}
+            disabled={currentPage === 1 || isPageLoading}
             className="px-4 py-2 text-sm bg-white border border-neutral-300 rounded-lg 
                      hover:bg-neutral-50 disabled:opacity-50 disabled:hover:bg-white
-                     transition-colors duration-200 font-medium text-neutral-700"
+                     transition-colors duration-200 font-medium text-neutral-700
+                     flex items-center gap-2 min-w-[100px] justify-center"
           >
-            Previous
+            {isPageLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              'Previous'
+            )}
           </button>
+          
           <span className="text-sm text-neutral-600 font-medium">
             Page {currentPage} • {filteredEmails.length} emails
           </span>
+          
           <button
             onClick={() => handlePageChange('next')}
-            disabled={!hasNextPage || loading}
+            disabled={!hasNextPage || isPageLoading}
             className="px-4 py-2 text-sm bg-white border border-neutral-300 rounded-lg 
                      hover:bg-neutral-50 disabled:opacity-50 disabled:hover:bg-white
-                     transition-colors duration-200 font-medium text-neutral-700"
+                     transition-colors duration-200 font-medium text-neutral-700
+                     flex items-center gap-2 min-w-[100px] justify-center"
           >
-            Next
+            {isPageLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              'Next'
+            )}
           </button>
         </div>
       </div>

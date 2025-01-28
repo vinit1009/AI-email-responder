@@ -20,6 +20,33 @@ function formatEmailField(headerValue: string): string {
   return emailPart;
 }
 
+function buildQuery(view: string, category: string): string {
+  let query = '';
+  
+  // Base query based on view
+  switch (view) {
+    case 'inbox':
+      query = 'in:inbox';
+      break;
+    case 'starred':
+      query = 'is:starred';
+      break;
+    case 'sent':
+      query = 'in:sent';
+      break;
+    default:
+      query = 'in:inbox';
+  }
+
+  // Add category filter if not 'all'
+  if (category && category !== 'all') {
+    const categoryName = category.replace('CATEGORY_', '').toLowerCase();
+    query += ` category:${categoryName}`;
+  }
+
+  return query;
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getServerSession();
@@ -35,28 +62,9 @@ export async function GET(request: Request) {
     const oauth2Client = await getOAuth2Client(session.user.email);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Build the query based on view and category
-    let query = '';
-    switch (view) {
-      case 'inbox':
-        query = 'in:inbox';
-        break;
-      case 'starred':
-        query = 'is:starred';
-        break;
-      case 'sent':
-        query = 'in:sent';
-        break;
-      default:
-        query = 'in:inbox';
-    }
+    const query = buildQuery(view, category);
 
-    // Add category filter if not 'all'
-    if (category !== 'all') {
-      query += ` category:${category.replace('CATEGORY_', '').toLowerCase()}`;
-    }
-
-    // Set maxResults to 50 for each category
+    // Use the query in the Gmail API call
     const response = await gmail.users.messages.list({
       userId: 'me',
       maxResults: 50,
